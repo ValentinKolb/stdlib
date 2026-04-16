@@ -124,6 +124,14 @@ Built-in MIME type mapping, no external dependencies.
 files.mimeTypesToAccept("image/jpeg,image/png");   // ".jpg,.jpeg,.png,image/jpeg,image/png"
 files.checkMimeType(file, "image/*");              // true for any image
 files.checkMimeType(file, ".pdf,image/*");         // true for PDFs or images
+
+// Look up MIME type from filename or extension
+files.getMimeType("photo.jpg");          // "image/jpeg"
+files.getMimeType(".png");               // "image/png"
+
+// Look up extension from MIME type
+files.getExtension("image/jpeg");        // ".jpg"
+files.getExtension("application/pdf");   // ".pdf"
 ```
 
 ### OPFS

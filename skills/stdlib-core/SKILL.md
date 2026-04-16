@@ -2,13 +2,15 @@
 name: stdlib-core
 description: >
   ALWAYS use when code imports from "@valentinkolb/stdlib" or when the user needs
-  encoding (Base64/Hex/Base32), hashing (SHA-256, FNV-1a), cryptography (asymmetric
+  encoding (Base64/Hex/Base32/Base62), hashing (SHA-256, FNV-1a), cryptography (asymmetric
   ECDSA+ECDH key pairs, symmetric AES-256-GCM encryption, TOTP two-factor auth),
   password generation (random, memorable, PIN), date/time formatting (UTC dates,
   relative time, durations, time spans), calendar utilities (month/week grids,
   date range calculation, item filtering, navigation helpers), timing helpers
-  (sleep, buffer, jitter, random, shuffle, withMinLoadTime), text manipulation
-  (slugify, humanize, titleify, pprintBytes), in-memory TTL caching with lazy
+  (sleep, buffer, jitter, random, shuffle, withMinLoadTime, debounce, throttle),
+  streaming (SSE parsing, NDJSON parsing), text manipulation
+  (slugify, humanize, titleify, pprintBytes, truncate, summarize, camelCase,
+  snakeCase, kebabCase, pascalCase), in-memory TTL caching with lazy
   loading, Result/ServiceError types for service layer error handling, QR code
   generation (WiFi, email, tel, vCard, calendar events, SVG rendering),
   SVG avatar generation, WebP data URL parsing, URL search parameter
@@ -22,13 +24,13 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, dates, calendar, timing, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, dates, calendar, timing, streaming, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
 ```
 
 Every namespace is also a plain object, so you can destructure or use dot-access:
 
 ```ts
-import { toBase64, fromBase64, ok, fail, err } from "@valentinkolb/stdlib";
+import { toBase64, fromBase64, ok, fail, err, parseSSE, parseNDJSON } from "@valentinkolb/stdlib";
 ```
 
 ---
@@ -48,6 +50,9 @@ encoding.fromHex(hex: string): Uint8Array           // case-insensitive, throws 
 
 encoding.toBase32(bytes: Uint8Array): string        // RFC 4648, uppercase, "=" padded
 encoding.fromBase32(base32: string): Uint8Array     // case-insensitive, padding optional
+
+encoding.toBase62(num: number, minLength?: number): string   // 0-9A-Za-z, URL-safe
+encoding.fromBase62(str: string): number                      // inverse of toBase62
 ```
 
 ### Examples
@@ -63,11 +68,16 @@ encoding.toBase32(bytes);  // "NBSWY3DP"
 encoding.fromBase64("aGVsbG8=");   // Uint8Array
 encoding.fromHex("cafe");          // Uint8Array([0xca, 0xfe])
 encoding.fromBase32("NBSWY3DP");   // Uint8Array
+
+encoding.toBase62(123456789);       // "8M0kX"
+encoding.toBase62(42, 6);           // "000010" (zero-padded to 6 chars)
+encoding.fromBase62("8M0kX");       // 123456789
 ```
 
 ### Gotchas
 - `fromHex` throws on odd-length strings and non-hex characters.
 - `fromBase32` throws on characters outside A-Z, 2-7.
+- `toBase62` uses the charset `0-9A-Za-z`. `fromBase62` throws on invalid characters.
 - Uses native `Uint8Array.toHex`/`fromHex` when available (modern runtimes).
 
 ---
@@ -366,6 +376,12 @@ timing.random(min?: number, max?: number, step?: number): number
 
 timing.shuffle<T>(array: readonly T[]): T[]
 // Fisher-Yates shuffle. Returns NEW array. Uses Math.random (not cryptographic).
+
+timing.debounce<T extends (...args: any[]) => void>(fn: T, delayMs: number): T & { cancel(): void }
+// Delays execution until delayMs after the last call. Returns debounced fn with cancel().
+
+timing.throttle<T extends (...args: any[]) => void>(fn: T, intervalMs: number): T & { cancel(): void }
+// Executes fn at most once per intervalMs. Trailing call is preserved.
 ```
 
 ### Examples
@@ -393,6 +409,16 @@ timing.random(1, 10, 1);    // integer 1-10
 timing.random(0, 100, 5);   // 0, 5, 10, ... 100
 
 timing.shuffle([1, 2, 3, 4, 5]); // e.g. [3, 1, 5, 2, 4]
+
+// Debounce: delays until input stops
+const search = timing.debounce((q: string) => fetchResults(q), 300);
+search("hel"); search("hello");  // only "hello" fires after 300ms
+search.cancel();                  // cancel pending call
+
+// Throttle: at most once per interval
+const onScroll = timing.throttle(() => updatePosition(), 100);
+window.addEventListener("scroll", onScroll);
+onScroll.cancel();                // cancel pending trailing call
 ```
 
 **Gotchas:**
@@ -400,6 +426,47 @@ timing.shuffle([1, 2, 3, 4, 5]); // e.g. [3, 1, 5, 2, 4]
 - `buffer` on flush error: logs to console, data is preserved (not deleted).
 - `shuffle` uses `Math.random`. For cryptographic shuffle, use `crypto.common` internals (`secureShuffle` is internal).
 - `jitter` uses `crypto.getRandomValues` (cryptographically secure).
+- `debounce` resets the timer on each call. Only the last call's arguments are used.
+- `throttle` preserves the trailing call -- if called during the cooldown, the last call fires after the interval.
+
+---
+
+## streaming
+
+Async generators for consuming `ReadableStream` data (e.g. from `fetch()` response bodies).
+
+### API
+
+```ts
+streaming.parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenerator<{ event?: string; data: string; id?: string }>
+// Yields parsed Server-Sent Event objects. Handles multi-line data fields and reconnection IDs.
+
+streaming.parseNDJSON<T>(stream: ReadableStream<Uint8Array>): AsyncGenerator<T>
+// Yields parsed JSON objects from a newline-delimited JSON stream. Skips blank lines.
+```
+
+### Examples
+
+```ts
+import { streaming } from "@valentinkolb/stdlib";
+
+// Server-Sent Events
+const res = await fetch("/api/events");
+for await (const event of streaming.parseSSE(res.body!)) {
+  console.log(event.event, event.data);  // e.g. "message", '{"text":"hello"}'
+}
+
+// NDJSON (e.g. structured log stream)
+const res2 = await fetch("/api/logs");
+for await (const entry of streaming.parseNDJSON<{ level: string; msg: string }>(res2.body!)) {
+  console.log(`[${entry.level}] ${entry.msg}`);
+}
+```
+
+**Gotchas:**
+- Both generators fully consume the stream. Do not read the same stream twice.
+- `parseSSE` follows the SSE spec: empty `event` defaults to `"message"`, multi-line `data:` fields are joined with `\n`.
+- `parseNDJSON` calls `JSON.parse` per line -- invalid JSON lines throw.
 
 ---
 
@@ -414,6 +481,17 @@ text.slugify(content: string): string     // "Hello World!" => "hello-world"
 text.humanize(content: string): string    // "hello_world-foo" => "Hello world foo"
 text.titleify(content: string): string    // "hello_world-foo" => "Hello World Foo"
 text.pprintBytes(bytes: number): string   // 1536 => "1.50 KB"
+
+text.truncate(content: string, limit: number, mode?: "end" | "start" | "middle"): string
+// Truncates to limit chars with "..." marker. Default mode: "end".
+
+text.summarize(content: string, limit: number, mode?: "end" | "start" | "middle"): string
+// Like truncate but breaks at word boundaries.
+
+text.camelCase(content: string): string   // "hello-world" => "helloWorld"
+text.snakeCase(content: string): string   // "helloWorld" => "hello_world"
+text.kebabCase(content: string): string   // "HelloWorld" => "hello-world"
+text.pascalCase(content: string): string  // "hello_world" => "HelloWorld"
 ```
 
 ### Examples
@@ -429,12 +507,25 @@ text.pprintBytes(0);               // "0 bytes"
 text.pprintBytes(1536);            // "1.50 KB"
 text.pprintBytes(1073741824);      // "1.00 GB"
 text.pprintBytes(NaN);             // "0 bytes"
+
+text.truncate("Hello World", 8);           // "Hello..."
+text.truncate("Hello World", 8, "start");  // "...World"
+text.truncate("Hello World", 8, "middle"); // "He...ld"
+text.summarize("The quick brown fox jumps over the lazy dog", 20); // "The quick brown..."
+
+text.camelCase("hello-world");     // "helloWorld"
+text.snakeCase("helloWorld");      // "hello_world"
+text.kebabCase("HelloWorld");      // "hello-world"
+text.pascalCase("hello_world");    // "HelloWorld"
 ```
 
 **Gotchas:**
 - `slugify` does NFKD normalization and strips diacritics. "u" with combining mark becomes "u".
 - `pprintBytes` uses binary units (1 KB = 1024 bytes).
 - `pprintBytes` guards against Infinity, NaN, and non-positive values.
+- `truncate` counts the `"..."` marker towards the limit. If `limit` < 4, returns the raw truncation without a marker.
+- `summarize` breaks at the last space before the limit, so the result may be shorter than `limit`.
+- Case conversion functions split on hyphens, underscores, spaces, and camelCase boundaries.
 
 ---
 

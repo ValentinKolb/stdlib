@@ -257,3 +257,52 @@ const size = text.pprintBytes(15728640);
 ```
 
 `slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". `pprintBytes` uses binary units (1 KB = 1024 bytes) and handles edge cases (`NaN`, `Infinity`, `0` all return `"0 bytes"`).
+
+---
+
+## 9. SSE + Result for Streaming API Calls
+
+**When to use:** Consuming a streaming API endpoint (e.g. AI chat completions, live feeds) with typed error handling around the fetch call.
+
+```ts
+import { streaming, result } from "@valentinkolb/stdlib";
+
+async function streamEvents(url: string) {
+  const res = await result.tryCatch(() => fetch(url));
+  if (!res.ok) return res;
+
+  for await (const event of streaming.parseSSE(res.data.body!)) {
+    const payload = JSON.parse(event.data);
+    if (payload.done) break;
+    process(payload);
+  }
+  return result.ok();
+}
+```
+
+`tryCatch` catches network errors before streaming begins. Inside the loop, each SSE event is parsed individually. Combine with `text.truncate` or `text.summarize` to keep displayed output within bounds.
+
+---
+
+## 10. Debounce + Cache for Search Inputs
+
+**When to use:** Building a search-as-you-type UI where expensive lookups are debounced and results are cached to avoid refetching.
+
+```ts
+import { timing, cache } from "@valentinkolb/stdlib";
+
+const searchCache = cache.create<SearchResult[]>({ ttl: 2 * 60_000 });
+
+const search = timing.debounce(async (query: string) => {
+  const cached = await searchCache.get(query);
+  if (cached) return renderResults(cached);
+
+  const results = await fetch(`/api/search?q=${query}`).then(r => r.json());
+  await searchCache.set(query, results);
+  renderResults(results);
+}, 300);
+
+input.addEventListener("input", (e) => search(e.target.value));
+```
+
+`debounce` waits 300ms after the last keystroke. `cache.create` stores results by query string so revisiting a previous query is instant. Call `search.cancel()` on component teardown.

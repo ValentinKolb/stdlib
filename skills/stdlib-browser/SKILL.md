@@ -200,6 +200,36 @@ files.mimeTypesToAccept("image/jpeg,image/png");
 // ".jpg,.jpeg,.png,image/jpeg,image/png"
 ```
 
+### files.getMimeType
+
+Looks up the MIME type for a filename or file extension. Returns `undefined` if unknown.
+
+```ts
+files.getMimeType(filenameOrExt: string): string | undefined
+```
+
+```ts
+files.getMimeType("photo.jpg");      // "image/jpeg"
+files.getMimeType(".png");           // "image/png"
+files.getMimeType("report.pdf");     // "application/pdf"
+files.getMimeType("unknown.xyz");    // undefined
+```
+
+### files.getExtension
+
+Looks up the primary file extension for a MIME type. Returns `undefined` if unknown.
+
+```ts
+files.getExtension(mimeType: string): string | undefined
+```
+
+```ts
+files.getExtension("image/jpeg");        // ".jpg"
+files.getExtension("application/pdf");   // ".pdf"
+files.getExtension("text/html");         // ".html"
+files.getExtension("made/up");           // undefined
+```
+
 ### files.checkMimeType
 
 Checks whether a file or MIME type string matches an accept filter. Supports extension (`.pdf`), wildcard (`image/*`), and exact (`application/pdf`) formats.

@@ -23,7 +23,7 @@ bun add solid-js lean-qr
 
 | Import | Environment | What's inside |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal | encoding, crypto, dates, text, cache, result, qr, svg, timing, search-params, file-icons, gradients |
+| `@valentinkolb/stdlib` | Universal | encoding, crypto, dates, text, cache, result, qr, svg, timing, streaming, search-params, file-icons, gradients |
 | `@valentinkolb/stdlib/browser` | Browser | files, images, cookies, clipboard, notifications, kv-store |
 | `@valentinkolb/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
 
@@ -93,7 +93,7 @@ hotkeys.create({
 ## Documentation
 
 ```
-docs/core.md      -- encoding, crypto, dates, text, cache, result, qr, svg, ...
+docs/core.md      -- encoding, crypto, dates, text, cache, result, qr, svg, streaming, ...
 docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store
 docs/solid.md     -- mutation, hotkeys, dnd, timed, localstorage, ...
 ```

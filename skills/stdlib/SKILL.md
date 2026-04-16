@@ -24,7 +24,7 @@ sub-paths.
 
 | Import path | Runtime | Modules |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `dates`, `calendar`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `text`, `searchParams`, `cache` |
+| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `dates`, `calendar`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
 | `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore` |
 | `@valentinkolb/stdlib/solid` | SolidJS components | `mutation`, `timed`, `hotkeys`, `dnd`, `detailPanel`, `localStore`, `clipboard`, `clickOutside`, `dropzone`, `a11y` |
 
@@ -49,12 +49,19 @@ sub-paths.
 | I need to... | Module | Entry point |
 |---|---|---|
 | Convert bytes to/from Base64, Hex, or Base32 | `encoding.toBase64/fromBase64/toHex/fromHex/toBase32/fromBase32` | core |
+| Encode/decode numbers as Base62 (URL-safe) | `encoding.toBase62/fromBase62` | core |
 
 ### Data & Error Handling
 | I need to... | Module | Entry point |
 |---|---|---|
 | Return typed success/error results | `ok()`, `fail()`, `err.*`, `unwrap()`, `tryCatch()` | core (`result`) |
 | Paginate query results | `paginate()`, `okMany()` | core (`result`) |
+
+### Streaming
+| I need to... | Module | Entry point |
+|---|---|---|
+| Parse Server-Sent Events (SSE) from a stream | `streaming.parseSSE` | core |
+| Parse newline-delimited JSON (NDJSON) from a stream | `streaming.parseNDJSON` | core |
 
 ### Dates, Time & Scheduling
 | I need to... | Module | Entry point |
@@ -66,6 +73,8 @@ sub-paths.
 | Sleep / add jitter / random numbers | `timing.sleep/jitter/random/shuffle` | core |
 | Buffer writes (coalesce by key) | `timing.buffer` | core |
 | Enforce minimum load time | `timing.withMinLoadTime` | core |
+| Debounce a function (plain JS) | `timing.debounce` | core |
+| Throttle a function (plain JS) | `timing.throttle` | core |
 | Debounce/interval (SolidJS reactive) | `timed.debounce/interval` | solid |
 
 ### Text & Display
@@ -73,6 +82,8 @@ sub-paths.
 |---|---|---|
 | Slugify a string | `text.slugify` | core |
 | Humanize/titleify a string | `text.humanize/titleify` | core |
+| Truncate or summarize a string | `text.truncate/summarize` | core |
+| Convert between camelCase/snake_case/kebab-case/PascalCase | `text.camelCase/snakeCase/kebabCase/pascalCase` | core |
 | Pretty-print byte sizes | `text.pprintBytes` | core |
 | Get a file icon/category | `fileicons.getFileCategory/getFileIcon` | core |
 | Get gradient presets for names | `gradients.gradientPresets` | core |
@@ -105,6 +116,8 @@ sub-paths.
 | Open a file/folder picker dialog | `files.showFileDialog/showFolderDialog` | browser |
 | Build safe file paths | `` files.path`uploads/${name}` `` | browser |
 | Check MIME types | `files.checkMimeType/mimeTypesToAccept` | browser |
+| Look up MIME type from filename or extension | `files.getMimeType` | browser |
+| Look up extension from MIME type | `files.getExtension` | browser |
 | Read/write to Origin Private File System | `files.OPFS.write/read/delete/ls` | browser |
 
 ### Browser -- Images
@@ -150,6 +163,6 @@ sub-paths.
 
 For full API documentation on each entry point, read the specific skill:
 
-- **`stdlib-core`** -- encoding, crypto, result, dates, calendar, qr, svg, text, timing, cache, searchParams, fileicons, gradients
+- **`stdlib-core`** -- encoding, crypto, result, dates, calendar, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
 - **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore
 - **`stdlib-solid`** -- localStore, mutation, dnd, hotkeys, dropzone, clickOutside, clipboard, detailPanel, timed, a11y

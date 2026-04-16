@@ -1,7 +1,7 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, dates, calendar, fileIcons, gradients, result, qr, svg, timing, text, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, dates, calendar, fileIcons, gradients, result, qr, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
 ```
 
 ## encoding
@@ -20,6 +20,11 @@ encoding.toBase32(bytes);  // "ZL7A===="
 encoding.fromHex("cafe");
 encoding.fromBase64("yv4=");
 encoding.fromBase32("ZL7A====");
+
+// Base62 (URL-safe, no special chars)
+encoding.toBase62(123456789);        // "8M0kX"
+encoding.toBase62(42, 6);            // "000010" (min 6 chars)
+encoding.fromBase62("8M0kX");        // 123456789
 ```
 
 ## crypto
@@ -252,6 +257,37 @@ const save = timing.buffer(
 );
 save("doc-1", { title: "Draft" });
 save("doc-1", { title: "Final" });   // replaces previous, flushes after 2s
+
+// Debounce -- delays execution until input stops
+const search = timing.debounce((query: string) => {
+  fetchResults(query);
+}, 300);
+search("hel"); search("hello");     // only "hello" fires, after 300ms
+
+// Throttle -- executes at most once per interval
+const onScroll = timing.throttle(() => {
+  updateScrollPosition();
+}, 100);
+```
+
+## streaming
+
+Async generators for consuming `ReadableStream` data. Works with `fetch()` response bodies.
+
+```ts
+import { streaming } from "@valentinkolb/stdlib";
+
+// Parse Server-Sent Events (SSE)
+const res = await fetch("/api/events");
+for await (const event of streaming.parseSSE(res.body!)) {
+  console.log(event.event, event.data);
+}
+
+// Parse newline-delimited JSON (NDJSON)
+const res2 = await fetch("/api/logs");
+for await (const entry of streaming.parseNDJSON<LogEntry>(res2.body!)) {
+  console.log(entry.level, entry.message);
+}
 ```
 
 ## text
@@ -266,6 +302,17 @@ text.humanize("hello_world-foo"); // "Hello world foo"
 text.titleify("hello_world-foo"); // "Hello World Foo"
 text.pprintBytes(1536);           // "1.50 KB"
 text.pprintBytes(0);              // "0 bytes"
+
+// Truncation and summarization
+text.truncate("Hello World", 8);               // "Hello..."
+text.truncate("Hello World", 8, "start");      // "...World"
+text.summarize("Long paragraph...", 100);       // first 100 chars, word-boundary aware
+
+// Case conversion
+text.camelCase("hello-world");    // "helloWorld"
+text.snakeCase("helloWorld");     // "hello_world"
+text.kebabCase("HelloWorld");     // "hello-world"
+text.pascalCase("hello_world");   // "HelloWorld"
 ```
 
 ## searchParams

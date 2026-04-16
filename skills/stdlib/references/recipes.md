@@ -276,3 +276,32 @@ function toggleHelp() { /* ... */ }
 function reorderTask(id: string, column: string, index: number) { /* ... */ }
 function selectTask(id: string) { /* ... */ }
 ```
+
+## 9. Streaming AI Chat
+
+Consume an SSE-based AI chat completion endpoint with typed error handling and
+incremental UI updates.
+
+```ts
+import { streaming, result } from "@valentinkolb/stdlib";
+
+type ChatChunk = { content: string; done: boolean };
+
+async function streamChat(prompt: string, onChunk: (text: string) => void) {
+  const res = await result.tryCatch(() =>
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    }),
+  );
+  if (!res.ok) return res;
+
+  for await (const event of streaming.parseSSE(res.data.body!)) {
+    const chunk: ChatChunk = JSON.parse(event.data);
+    if (chunk.done) break;
+    onChunk(chunk.content);
+  }
+  return result.ok();
+}
+```
