@@ -1,0 +1,38 @@
+{
+  "name": "@valentinkolb/stdlib",
+  "version": "0.0.1",
+  "description": "Generic headless utility library -- crypto, encoding, dates, files, images, SolidJS primitives",
+  "type": "module",
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "!src/_test-helpers.ts"
+  ],
+  "scripts": {
+    "test": "bun test"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser/index.ts",
+    "./solid": "./src/solid/index.ts",
+    "./bun": "./src/bun/index.ts"
+  },
+  "peerDependencies": {
+    "solid-js": "",
+    "lean-qr": ""
+  },
+  "peerDependenciesMeta": {
+    "solid-js": {
+      "optional": true
+    },
+    "lean-qr": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/bun": "latest",
+    "solid-js": "^1.9.0",
+    "lean-qr": "^2.0.0"
+  }
+}
