@@ -50,10 +50,16 @@ describe("clipboard.create", () => {
       configurable: true,
     });
 
+    // Suppress expected console.error from the catch block
+    const origError = console.error;
+    console.error = () => {};
+
     const { result, dispose } = testRoot(() => clipboard.create());
     await result.copy("nope");
     expect(result.wasCopied()).toBe(false);
     dispose();
+
+    console.error = origError;
 
     // Restore working mock
     Object.defineProperty(globalThis, "navigator", {
