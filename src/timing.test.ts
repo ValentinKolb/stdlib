@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
-import { withMinLoadTime, buffer, jitter, sleep, random, shuffle } from "./timing";
+import { withMinLoadTime, buffer, jitter, sleep, random, shuffle, debounce, throttle, timing } from "./timing";
 
 // ==========================
 // withMinLoadTime
@@ -216,5 +216,87 @@ describe("shuffle", () => {
     }
     // Extremely unlikely to get identity more than a few times out of 50
     expect(identityCount).toBeLessThan(5);
+  });
+});
+
+// ==========================
+// debounce
+// ==========================
+
+describe("debounce", () => {
+  it("delays execution", async () => {
+    let count = 0;
+    const d = timing.debounce(() => count++, 50);
+    d.call(); d.call(); d.call();
+    expect(count).toBe(0);
+    await Bun.sleep(80);
+    expect(count).toBe(1);
+  });
+
+  it("cancel prevents execution", async () => {
+    let count = 0;
+    const d = timing.debounce(() => count++, 50);
+    d.call();
+    d.cancel();
+    await Bun.sleep(80);
+    expect(count).toBe(0);
+  });
+
+  it("flush fires immediately", () => {
+    let count = 0;
+    const d = timing.debounce(() => count++, 1000);
+    d.call();
+    expect(d.isPending()).toBe(true);
+    d.flush();
+    expect(count).toBe(1);
+    expect(d.isPending()).toBe(false);
+  });
+
+  it("uses latest args", async () => {
+    let last = "";
+    const d = timing.debounce((v: string) => { last = v; }, 50);
+    d.call("a"); d.call("b"); d.call("c");
+    await Bun.sleep(80);
+    expect(last).toBe("c");
+  });
+});
+
+// ==========================
+// throttle
+// ==========================
+
+describe("throttle", () => {
+  it("fires first call immediately", () => {
+    let count = 0;
+    const t = timing.throttle(() => count++, 100);
+    t.call();
+    expect(count).toBe(1);
+  });
+
+  it("drops calls within interval", () => {
+    let count = 0;
+    const t = timing.throttle(() => count++, 100);
+    t.call(); t.call(); t.call();
+    expect(count).toBe(1);
+  });
+
+  it("fires again after interval", async () => {
+    let count = 0;
+    const t = timing.throttle(() => count++, 50);
+    t.call();
+    expect(count).toBe(1);
+    await Bun.sleep(80);
+    t.call();
+    expect(count).toBe(2);
+  });
+
+  it("cancel prevents trailing call", async () => {
+    let count = 0;
+    const t = timing.throttle(() => count++, 50);
+    t.call(); // fires immediately
+    t.call(); // schedules trailing
+    t.cancel();
+    await Bun.sleep(80);
+    expect(count).toBe(1); // trailing was cancelled
   });
 });

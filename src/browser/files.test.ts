@@ -95,6 +95,8 @@ import {
   createZip,
   extractZip,
   path,
+  getMimeType,
+  getExtension,
 } from "./files";
 
 // ==========================
@@ -372,5 +374,36 @@ describe("path", () => {
     const result = path`${"dir/subdir"}`;
     // The slash inside the value creates separate sanitized segments
     expect(result.split("/").length).toBe(2);
+  });
+});
+
+// ==========================
+// getMimeType
+// ==========================
+
+describe("getMimeType", () => {
+  it("returns MIME type for known extension", () => {
+    expect(getMimeType("photo.jpg")).toBe("image/jpeg");
+    expect(getMimeType("document.pdf")).toBe("application/pdf");
+  });
+  it("returns null for unknown extension", () => {
+    expect(getMimeType("file.xyz123")).toBeNull();
+  });
+  it("handles bare extension without dot", () => {
+    expect(getMimeType("png")).toBe("image/png");
+  });
+});
+
+// ==========================
+// getExtension
+// ==========================
+
+describe("getExtension", () => {
+  it("returns extension for known MIME type", () => {
+    expect(getExtension("image/jpeg")).toBe("jpg");
+    expect(getExtension("application/pdf")).toBe("pdf");
+  });
+  it("returns null for unknown MIME type", () => {
+    expect(getExtension("application/x-unknown-thing")).toBeNull();
   });
 });

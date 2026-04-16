@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { toBase64, fromBase64, toHex, fromHex, toBase32, fromBase32 } from "./encoding";
+import { toBase64, fromBase64, toHex, fromHex, toBase32, fromBase32, toBase62, fromBase62 } from "./encoding";
 
 // ==========================
 // Base64
@@ -110,4 +110,22 @@ describe("toBase32 / fromBase32", () => {
     const result = fromBase32(toBase32(bytes));
     expect(result).toEqual(bytes);
   });
+});
+
+// ==========================
+// Base62
+// ==========================
+
+describe("toBase62 / fromBase62", () => {
+  it("encodes 0", () => expect(toBase62(0)).toBe("0"));
+  it("encodes small numbers", () => expect(toBase62(61)).toBe("z"));
+  it("encodes 62", () => expect(toBase62(62)).toBe("10"));
+  it("roundtrips", () => {
+    for (const n of [0, 1, 42, 999, 123456789, Number.MAX_SAFE_INTEGER]) {
+      expect(fromBase62(toBase62(n))).toBe(n);
+    }
+  });
+  it("pads to minLength", () => expect(toBase62(1, 5)).toBe("00001"));
+  it("throws on negative", () => expect(() => toBase62(-1)).toThrow());
+  it("throws on invalid char", () => expect(() => fromBase62("!!!")).toThrow());
 });

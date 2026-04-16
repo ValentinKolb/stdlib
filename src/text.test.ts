@@ -1,5 +1,16 @@
 import { describe, it, expect } from "bun:test";
-import { slugify, humanize, titleify, pprintBytes } from "./text";
+import {
+  slugify,
+  humanize,
+  titleify,
+  pprintBytes,
+  truncate,
+  summarize,
+  camelCase,
+  snakeCase,
+  kebabCase,
+  pascalCase,
+} from "./text";
 
 // ==========================
 // slugify
@@ -107,5 +118,154 @@ describe("pprintBytes", () => {
 
   it("returns '0 bytes' for negative values", () => {
     expect(pprintBytes(-100)).toBe("0 bytes");
+  });
+});
+
+// ==========================
+// truncate
+// ==========================
+
+describe("truncate", () => {
+  it("returns unchanged if within limit", () => {
+    expect(truncate("hello", 10)).toBe("hello");
+  });
+
+  it("truncates at end with ellipsis (default mode)", () => {
+    expect(truncate("Hello World", 6)).toBe("Hello…");
+  });
+
+  it("truncates in middle", () => {
+    expect(truncate("Hello World", 6, "middle")).toBe("He…rld");
+  });
+
+  it("handles exact limit length (no truncation needed)", () => {
+    expect(truncate("hello", 5)).toBe("hello");
+  });
+
+  it("handles limit of 1", () => {
+    expect(truncate("hello", 1)).toBe("…");
+  });
+
+  it("handles empty string", () => {
+    expect(truncate("", 5)).toBe("");
+  });
+});
+
+// ==========================
+// summarize
+// ==========================
+
+describe("summarize", () => {
+  it("returns unchanged if within limit", () => {
+    expect(summarize("hello", 10)).toBe("hello");
+  });
+
+  it('adds "[N chars omitted]" suffix', () => {
+    expect(summarize("Hello World", 6)).toBe("Hello… [6 chars omitted]");
+  });
+
+  it("works with middle mode", () => {
+    expect(summarize("Hello World", 6, "middle")).toBe(
+      "He…rld [6 chars omitted]",
+    );
+  });
+
+  it("omitted count is correct", () => {
+    // 20 chars, limit 10 -> 11 omitted (20 - 10 + 1)
+    const input = "abcdefghijklmnopqrst"; // 20 chars
+    const result = summarize(input, 10);
+    expect(result).toContain("[11 chars omitted]");
+  });
+});
+
+// ==========================
+// camelCase
+// ==========================
+
+describe("camelCase", () => {
+  it('converts "hello world" to "helloWorld"', () => {
+    expect(camelCase("hello world")).toBe("helloWorld");
+  });
+
+  it('converts "Hello World" to "helloWorld"', () => {
+    expect(camelCase("Hello World")).toBe("helloWorld");
+  });
+
+  it('converts "hello_world" to "helloWorld"', () => {
+    expect(camelCase("hello_world")).toBe("helloWorld");
+  });
+
+  it('converts "hello-world" to "helloWorld"', () => {
+    expect(camelCase("hello-world")).toBe("helloWorld");
+  });
+
+  it('converts "HelloWorld" to "helloWorld"', () => {
+    expect(camelCase("HelloWorld")).toBe("helloWorld");
+  });
+
+  it('converts "HTML parser" to "htmlParser"', () => {
+    expect(camelCase("HTML parser")).toBe("htmlParser");
+  });
+});
+
+// ==========================
+// snakeCase
+// ==========================
+
+describe("snakeCase", () => {
+  it('converts "hello world" to "hello_world"', () => {
+    expect(snakeCase("hello world")).toBe("hello_world");
+  });
+
+  it('converts "helloWorld" to "hello_world"', () => {
+    expect(snakeCase("helloWorld")).toBe("hello_world");
+  });
+
+  it('converts "HelloWorld" to "hello_world"', () => {
+    expect(snakeCase("HelloWorld")).toBe("hello_world");
+  });
+
+  it('converts "hello-world" to "hello_world"', () => {
+    expect(snakeCase("hello-world")).toBe("hello_world");
+  });
+});
+
+// ==========================
+// kebabCase
+// ==========================
+
+describe("kebabCase", () => {
+  it('converts "hello world" to "hello-world"', () => {
+    expect(kebabCase("hello world")).toBe("hello-world");
+  });
+
+  it('converts "helloWorld" to "hello-world"', () => {
+    expect(kebabCase("helloWorld")).toBe("hello-world");
+  });
+
+  it('converts "hello_world" to "hello-world"', () => {
+    expect(kebabCase("hello_world")).toBe("hello-world");
+  });
+});
+
+// ==========================
+// pascalCase
+// ==========================
+
+describe("pascalCase", () => {
+  it('converts "hello world" to "HelloWorld"', () => {
+    expect(pascalCase("hello world")).toBe("HelloWorld");
+  });
+
+  it('converts "helloWorld" to "HelloWorld"', () => {
+    expect(pascalCase("helloWorld")).toBe("HelloWorld");
+  });
+
+  it('converts "hello_world" to "HelloWorld"', () => {
+    expect(pascalCase("hello_world")).toBe("HelloWorld");
+  });
+
+  it('converts "hello-world" to "HelloWorld"', () => {
+    expect(pascalCase("hello-world")).toBe("HelloWorld");
   });
 });
