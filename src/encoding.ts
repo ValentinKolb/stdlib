@@ -183,6 +183,48 @@ export function fromBase32(base32: string): Uint8Array {
   return new Uint8Array(bytes);
 }
 
+const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/**
+ * Encode a non-negative integer as a Base62 string.
+ *
+ * Uses digits 0-9, A-Z, a-z (62 characters). Useful for compact,
+ * URL-safe identifiers and short tokens.
+ *
+ * @param num - Non-negative integer to encode.
+ * @param minLength - Minimum output length, zero-padded if shorter (default: 1).
+ * @returns Base62 encoded string.
+ * @throws If num is negative or not a safe integer.
+ */
+export const toBase62 = (num: number, minLength: number = 1): string => {
+  if (!Number.isSafeInteger(num) || num < 0) throw new Error("toBase62 requires a non-negative safe integer");
+  if (num === 0) return "0".padStart(minLength, "0");
+  let result = "";
+  let n = num;
+  while (n > 0) {
+    result = BASE62_CHARS[n % 62]! + result;
+    n = Math.floor(n / 62);
+  }
+  return result.padStart(minLength, "0");
+};
+
+/**
+ * Decode a Base62 string back to a non-negative integer.
+ *
+ * @param str - Base62 encoded string (digits 0-9, A-Z, a-z).
+ * @returns Decoded non-negative integer.
+ * @throws If string contains invalid characters.
+ */
+export const fromBase62 = (str: string): number => {
+  let result = 0;
+  for (const char of str) {
+    const idx = BASE62_CHARS.indexOf(char);
+    if (idx === -1) throw new Error(`invalid base62 character: ${char}`);
+    result = result * 62 + idx;
+  }
+  return result;
+};
+
 /**
  * Convenience namespace re-exporting all encoding/decoding functions.
  * Each function is also available as a named export.
@@ -194,4 +236,6 @@ export const encoding = {
   fromHex,
   toBase32,
   fromBase32,
+  toBase62,
+  fromBase62,
 } as const;

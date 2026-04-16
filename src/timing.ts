@@ -184,6 +184,88 @@ export const shuffle = <T>(array: readonly T[]): T[] => {
   return result;
 };
 
+/**
+ * Create a debounced function that delays invocation until `delayMs` after the last call.
+ *
+ * Repeated calls within the delay window reset the timer. Only the last call's
+ * arguments are used when the function finally fires.
+ *
+ * @param fn - Function to debounce.
+ * @param delayMs - Delay in milliseconds.
+ * @returns Object with `call` (debounced function), `cancel`, `flush`, and `isPending`.
+ */
+export const debounce = <T extends (...args: any[]) => any>(
+  fn: T,
+  delayMs: number,
+): { call: (...args: Parameters<T>) => void; cancel: () => void; flush: () => void; isPending: () => boolean } => {
+  let timerId: ReturnType<typeof setTimeout> | null = null;
+  let lastArgs: Parameters<T> | null = null;
+
+  const cancel = () => {
+    if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+    lastArgs = null;
+  };
+
+  const flush = () => {
+    if (timerId !== null && lastArgs !== null) {
+      clearTimeout(timerId);
+      timerId = null;
+      fn(...lastArgs);
+      lastArgs = null;
+    }
+  };
+
+  const call = (...args: Parameters<T>) => {
+    lastArgs = args;
+    if (timerId !== null) clearTimeout(timerId);
+    timerId = setTimeout(() => {
+      timerId = null;
+      if (lastArgs !== null) { fn(...lastArgs); lastArgs = null; }
+    }, delayMs);
+  };
+
+  return { call, cancel, flush, isPending: () => timerId !== null };
+};
+
+/**
+ * Create a throttled function that invokes at most once per `intervalMs`.
+ *
+ * The first call fires immediately. Subsequent calls within the interval
+ * are dropped. After the interval passes, the next call fires immediately again.
+ *
+ * @param fn - Function to throttle.
+ * @param intervalMs - Minimum interval between invocations in milliseconds.
+ * @returns Object with `call` (throttled function) and `cancel`.
+ */
+export const throttle = <T extends (...args: any[]) => any>(
+  fn: T,
+  intervalMs: number,
+): { call: (...args: Parameters<T>) => void; cancel: () => void } => {
+  let lastCall = 0;
+  let timerId: ReturnType<typeof setTimeout> | null = null;
+
+  const cancel = () => {
+    if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+  };
+
+  const call = (...args: Parameters<T>) => {
+    const now = Date.now();
+    const elapsed = now - lastCall;
+    if (elapsed >= intervalMs) {
+      lastCall = now;
+      fn(...args);
+    } else if (timerId === null) {
+      timerId = setTimeout(() => {
+        lastCall = Date.now();
+        timerId = null;
+        fn(...args);
+      }, intervalMs - elapsed);
+    }
+  };
+
+  return { call, cancel };
+};
+
 export const timing = {
   withMinLoadTime,
   buffer,
@@ -191,4 +273,6 @@ export const timing = {
   sleep,
   random,
   shuffle,
+  debounce,
+  throttle,
 } as const;

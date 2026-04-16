@@ -136,13 +136,13 @@ for (const [mimeType, exts] of Object.entries(MIME_TO_EXT)) {
 /**
  * Returns the canonical file extension for a MIME type, or `null` if unknown.
  */
-const getExtension = (mimeType: string): string | null =>
+export const getExtension = (mimeType: string): string | null =>
   MIME_TO_EXT[mimeType]?.[0] ?? null;
 
 /**
  * Returns the MIME type for a filename or bare extension, or `null` if unknown.
  */
-const getMimeType = (filenameOrExt: string): string | null => {
+export const getMimeType = (filenameOrExt: string): string | null => {
   const ext = filenameOrExt.includes(".")
     ? filenameOrExt.split(".").pop()!.toLowerCase()
     : filenameOrExt.toLowerCase();
@@ -968,4 +968,6 @@ export const files = {
   compress,
   decompress,
   OPFS,
+  getMimeType,
+  getExtension,
 } as const;

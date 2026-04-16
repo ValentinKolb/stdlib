@@ -110,9 +110,154 @@ export const pprintBytes = (bytes: number): string => {
   return `${value.toFixed(decimals)} ${unit}`;
 };
 
+/**
+ * Split any string into lowercase words, handling camelCase, PascalCase,
+ * snake_case, kebab-case, and space-separated inputs.
+ *
+ * @param content - The string to split into words.
+ * @returns An array of lowercase words.
+ */
+const splitWords = (content: string): string[] =>
+  content
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/[_\-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.toLowerCase());
+
+/**
+ * Truncate a string to a maximum length, adding an ellipsis character.
+ *
+ * In `"end"` mode (the default) the ellipsis replaces the tail of the string.
+ * In `"middle"` mode the ellipsis is placed in the centre so that the
+ * beginning and end of the original string are preserved.
+ *
+ * The limit includes the ellipsis character itself.  If the content already
+ * fits within the limit it is returned unchanged.
+ *
+ * @param content - The string to truncate.
+ * @param limit   - Maximum allowed length (including the ellipsis).
+ * @param mode    - `"end"` (default) or `"middle"`.
+ * @returns The (possibly truncated) string.
+ *
+ * @example text.truncate("Hello World", 6)            // "Hello…"
+ * @example text.truncate("Hello World", 6, "middle")  // "He…ld"
+ */
+export const truncate = (
+  content: string,
+  limit: number,
+  mode: "end" | "middle" = "end",
+): string => {
+  if (content.length <= limit) return content;
+  if (mode === "middle") {
+    const half = Math.floor((limit - 1) / 2);
+    return content.slice(0, half) + "…" + content.slice(-(limit - 1 - half));
+  }
+  return content.slice(0, limit - 1) + "…";
+};
+
+/**
+ * Truncate a string like {@link truncate}, then append a human-readable
+ * `[N chars omitted]` suffix so the reader knows how much was removed.
+ *
+ * The omitted-info suffix is **not** counted toward the limit.
+ *
+ * @param content - The string to summarize.
+ * @param limit   - Maximum allowed length for the visible part (including ellipsis).
+ * @param mode    - `"end"` (default) or `"middle"`.
+ * @returns The truncated string followed by ` [N chars omitted]`, or the
+ *          original string if it already fits.
+ *
+ * @example text.summarize("Hello World", 6)  // "Hello… [6 chars omitted]"
+ */
+export const summarize = (
+  content: string,
+  limit: number,
+  mode: "end" | "middle" = "end",
+): string => {
+  if (content.length <= limit) return content;
+  const omitted = content.length - limit + 1;
+  const truncated = truncate(content, limit, mode);
+  return `${truncated} [${omitted} chars omitted]`;
+};
+
+/**
+ * Convert a string to camelCase.
+ *
+ * Handles camelCase, PascalCase, snake_case, kebab-case, and
+ * space-separated inputs.
+ *
+ * @param content - The string to convert.
+ * @returns The camelCased string.
+ *
+ * @example text.camelCase("hello world")  // "helloWorld"
+ * @example text.camelCase("HelloWorld")   // "helloWorld"
+ */
+export const camelCase = (content: string): string => {
+  const words = splitWords(content);
+  return words
+    .map((w, i) => (i === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join("");
+};
+
+/**
+ * Convert a string to PascalCase.
+ *
+ * Handles camelCase, PascalCase, snake_case, kebab-case, and
+ * space-separated inputs.
+ *
+ * @param content - The string to convert.
+ * @returns The PascalCased string.
+ *
+ * @example text.pascalCase("hello world")  // "HelloWorld"
+ * @example text.pascalCase("hello_world")  // "HelloWorld"
+ */
+export const pascalCase = (content: string): string =>
+  splitWords(content)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join("");
+
+/**
+ * Convert a string to snake_case.
+ *
+ * Handles camelCase, PascalCase, snake_case, kebab-case, and
+ * space-separated inputs.
+ *
+ * @param content - The string to convert.
+ * @returns The snake_cased string.
+ *
+ * @example text.snakeCase("hello world")  // "hello_world"
+ * @example text.snakeCase("helloWorld")   // "hello_world"
+ */
+export const snakeCase = (content: string): string =>
+  splitWords(content).join("_");
+
+/**
+ * Convert a string to kebab-case.
+ *
+ * Handles camelCase, PascalCase, snake_case, kebab-case, and
+ * space-separated inputs.
+ *
+ * @param content - The string to convert.
+ * @returns The kebab-cased string.
+ *
+ * @example text.kebabCase("hello world")  // "hello-world"
+ * @example text.kebabCase("hello_world")  // "hello-world"
+ */
+export const kebabCase = (content: string): string =>
+  splitWords(content).join("-");
+
 export const text = {
   slugify,
   humanize,
   titleify,
   pprintBytes,
+  truncate,
+  summarize,
+  camelCase,
+  pascalCase,
+  snakeCase,
+  kebabCase,
 } as const;

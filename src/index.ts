@@ -10,3 +10,4 @@ export * from "./timing";
 export * from "./text";
 export * from "./search-params";
 export * from "./cache";
+export * from "./streaming";
