@@ -1,0 +1,113 @@
+import { describe, it, expect } from "bun:test";
+import { toBase64, fromBase64, toHex, fromHex, toBase32, fromBase32 } from "./encoding";
+
+// ==========================
+// Base64
+// ==========================
+
+describe("toBase64 / fromBase64", () => {
+  it("roundtrips empty Uint8Array", () => {
+    const empty = new Uint8Array([]);
+    expect(fromBase64(toBase64(empty))).toEqual(empty);
+  });
+
+  it("roundtrips ASCII text bytes", () => {
+    const bytes = new TextEncoder().encode("Hello, World!");
+    const result = fromBase64(toBase64(bytes));
+    expect(result).toEqual(bytes);
+  });
+
+  it("roundtrips binary data with all byte values 0x00-0xFF", () => {
+    const bytes = Uint8Array.from({ length: 256 }, (_, i) => i);
+    const result = fromBase64(toBase64(bytes));
+    expect(result).toEqual(bytes);
+  });
+
+  it("roundtrips large data (64KB) without stack overflow", () => {
+    const bytes = new Uint8Array(65536);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = i % 256;
+    const result = fromBase64(toBase64(bytes));
+    expect(result).toEqual(bytes);
+  });
+
+  it("decodes a known base64 string", () => {
+    const result = fromBase64("SGVsbG8=");
+    expect(Array.from(result)).toEqual([72, 101, 108, 108, 111]);
+  });
+});
+
+// ==========================
+// Hex
+// ==========================
+
+describe("toHex / fromHex", () => {
+  it("roundtrips empty Uint8Array", () => {
+    const empty = new Uint8Array([]);
+    expect(fromHex(toHex(empty))).toEqual(empty);
+  });
+
+  it("roundtrips known bytes", () => {
+    const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+    const hex = toHex(bytes);
+    expect(hex).toBe("deadbeef");
+    expect(fromHex(hex)).toEqual(bytes);
+  });
+
+  it("produces lowercase hex", () => {
+    expect(toHex(new Uint8Array([0xab]))).toBe("ab");
+  });
+
+  it("fromHex throws on odd-length string", () => {
+    expect(() => fromHex("abc")).toThrow();
+  });
+
+  it("fromHex handles empty string", () => {
+    expect(fromHex("")).toEqual(new Uint8Array([]));
+  });
+
+  it("fromHex throws on invalid hex characters", () => {
+    expect(() => fromHex("gg")).toThrow();
+  });
+});
+
+// ==========================
+// Base32
+// ==========================
+
+describe("toBase32 / fromBase32", () => {
+  it("roundtrips empty Uint8Array", () => {
+    const empty = new Uint8Array([]);
+    expect(fromBase32(toBase32(empty))).toEqual(empty);
+  });
+
+  it("roundtrips RFC 4648 test vector: 'f' -> 'MY======'", () => {
+    const bytes = new TextEncoder().encode("f");
+    expect(toBase32(bytes)).toBe("MY======");
+    expect(fromBase32("MY======")).toEqual(bytes);
+  });
+
+  it("roundtrips RFC 4648 test vector: 'foobar' -> 'MZXW6YTBOI======'", () => {
+    const bytes = new TextEncoder().encode("foobar");
+    const b32 = toBase32(bytes);
+    expect(b32).toBe("MZXW6YTBOI======");
+    expect(fromBase32(b32)).toEqual(bytes);
+  });
+
+  it("fromBase32 is case-insensitive", () => {
+    const upper = fromBase32("MY======");
+    const lower = fromBase32("my======");
+    expect(upper).toEqual(lower);
+  });
+
+  it("fromBase32 strips padding before decoding", () => {
+    const withPad = fromBase32("MZXW6YTBOI======");
+    const withoutPad = fromBase32("MZXW6YTBOI");
+    expect(withPad).toEqual(withoutPad);
+  });
+
+  it("roundtrips binary data with all byte values", () => {
+    const bytes = Uint8Array.from({ length: 256 }, (_, i) => i);
+    const result = fromBase32(toBase32(bytes));
+    expect(result).toEqual(bytes);
+  });
+});
