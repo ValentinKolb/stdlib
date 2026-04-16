@@ -130,7 +130,10 @@ describe("localStore.read", () => {
 
   it("returns null for invalid JSON", () => {
     store["bad-json"] = "{not valid json";
+    const origWarn = console.warn;
+    console.warn = () => {}; // suppress expected warning
     const val = localStore.read("bad-json");
+    console.warn = origWarn;
     expect(val).toBeNull();
     delete store["bad-json"];
   });

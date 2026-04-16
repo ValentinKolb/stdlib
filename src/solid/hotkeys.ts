@@ -8,12 +8,11 @@ const MODIFIER_PRIORITY = new Map<string, number>([
   ["shift", 2],
 ]);
 
-const isBrowser = typeof window !== "undefined";
+const isBrowser = typeof window !== "undefined" && typeof navigator !== "undefined";
 const isMacPlatform = isBrowser && (
-  // Modern API
-  ((navigator as any).userAgentData?.platform?.toLowerCase().includes("mac")) ??
-  // Fallback to userAgent
-  navigator.userAgent.toLowerCase().includes("mac")
+  (navigator as any).userAgentData?.platform?.toLowerCase().includes("mac") ||
+  navigator.userAgent?.toLowerCase().includes("mac") ||
+  false
 );
 
 export type PrettyKeyPart = {
