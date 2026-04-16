@@ -147,6 +147,7 @@ const { selectedKey, select, deselect } = detailPanel.createList({
 ## localStore
 
 Reactive SolidJS store with automatic localStorage persistence and cross-tab sync via BroadcastChannel.
+For simple non-reactive cookie storage, see `cookies` from `@valentinkolb/stdlib/browser`.
 
 ```tsx
 import { localStore } from "@valentinkolb/stdlib/solid";
@@ -168,6 +169,7 @@ localStore.read("user");    // T | null
 ## clipboard
 
 Reactive clipboard hook with auto-resetting copy-feedback signal.
+Wraps `clipboard.copy()` from `@valentinkolb/stdlib/browser` with a `wasCopied` signal that resets after a timeout.
 
 ```tsx
 import { clipboard } from "@valentinkolb/stdlib/solid";

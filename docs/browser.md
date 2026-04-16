@@ -156,10 +156,12 @@ cookies.deleteCookie("token");
 ```
 
 Defaults: `path=/`, `SameSite=Lax`, 1-year `max-age`, auto `Secure` on HTTPS.
+For SolidJS apps that need reactive persistent state with cross-tab sync, see `localStore` from `@valentinkolb/stdlib/solid`.
 
 ## clipboard
 
 Copy text to the system clipboard. Requires a secure context (HTTPS or localhost).
+For SolidJS apps, see `clipboard.create()` from `@valentinkolb/stdlib/solid` which adds a reactive `wasCopied` signal that auto-resets after a timeout.
 
 ```ts
 import { clipboard } from "@valentinkolb/stdlib/browser";

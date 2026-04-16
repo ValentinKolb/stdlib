@@ -2,6 +2,8 @@
  * Clipboard utilities for copying text in the browser.
  *
  * Requires the Clipboard API, which is only available in secure contexts (HTTPS or localhost).
+ * For SolidJS apps, see `clipboard.create()` from `@valentinkolb/stdlib/solid` which adds
+ * a reactive `wasCopied` signal that auto-resets after a timeout.
  */
 
 /**

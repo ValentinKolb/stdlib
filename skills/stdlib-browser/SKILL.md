@@ -557,6 +557,7 @@ cookies.deleteCookie("auth_token");
 ## clipboard
 
 Clipboard utilities. Requires a secure context (HTTPS or localhost).
+For SolidJS apps, use `clipboard.create()` from `@valentinkolb/stdlib/solid` which adds a reactive `wasCopied` signal that auto-resets after a timeout.
 
 ### clipboard.copy
 

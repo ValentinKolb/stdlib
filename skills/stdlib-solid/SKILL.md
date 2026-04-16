@@ -446,6 +446,7 @@ return (
 ## localStore
 
 Reactive localStorage with SolidJS stores and cross-tab synchronization via BroadcastChannel.
+For simple non-reactive cookie storage, see `cookies` from `@valentinkolb/stdlib/browser`.
 
 ### API
 
@@ -504,6 +505,7 @@ const data = localStore.read<PadData>("pad:abc");
 ## clipboard
 
 Reactive copy-to-clipboard with a timeout-based `wasCopied` feedback signal.
+Wraps `clipboard.copy()` from `@valentinkolb/stdlib/browser` with a reactive signal that auto-resets.
 
 ### API
 
