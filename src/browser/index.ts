@@ -11,3 +11,4 @@ export * from "./cookies";
 export * from "./clipboard";
 export * from "./notifications";
 export * from "./kv-store";
+export * from "./theme";
