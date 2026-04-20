@@ -1,7 +1,7 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, password, dates, calendar, fileIcons, gradients, result, qr, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, fileIcons, gradients, result, qr, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
 ```
 
 ## encoding
@@ -127,28 +127,30 @@ dates.formatTimeSpan("2025-03-10T00:00:00Z");       // "in 3 days"
 dates.formatDuration("2025-03-01", "2025-03-03");   // "2 days"
 ```
 
-## calendar
+## dates (calendar views)
 
-Month/week grids, date checks, navigation, and formatting. Uses native Intl.DateTimeFormat with locale support.
+Calendar grids, date checks, navigation, and locale-aware formatting are all part of the `dates` module.
 
 ```ts
-import { calendar } from "@valentinkolb/stdlib";
+import { dates } from "@valentinkolb/stdlib";
 
-const weeks = calendar.getMonthGrid(2025, 0);  // January 2025, 2D array of Dates
-const days = calendar.getWeekDays(new Date());  // Mon-Sun array
-const range = calendar.getDateRange("month", new Date());
+const weeks = dates.getMonthGrid(2025, 0);  // January 2025, 2D array of Dates
+const days = dates.getWeekDays(new Date());  // Mon-Sun array
+const range = dates.getDateRange("month", new Date());
 
-calendar.isToday(new Date());                  // true
-calendar.isSameDay(a, b);
-calendar.addMonths(new Date(), -1);
-calendar.formatMonthYear(new Date());          // "March 2025"
-calendar.formatDateKey(new Date());            // "2025-03-05"
+dates.isToday(new Date());                  // true
+dates.isSameDay(a, b);
+dates.addMonths(new Date(), -1);
+dates.formatMonthYear(new Date());           // "March 2025"
+dates.formatMonthYear(new Date(), "de");     // "März 2025"
+dates.formatDateKey(new Date());             // "2025-03-05"
+dates.weekdays("fr");                        // ["lun.", "mar.", ...]
 
 // Filter items that fall on a date
-const items = calendar.getDayItems(allItems, date);
+const items = dates.getDayItems(allItems, date);
 
 // Build calendar URLs
-calendar.buildCalendarUrl("/app", { view: "week", date: new Date() });
+dates.buildCalendarUrl("/app", { view: "week", date: new Date() });
 ```
 
 ## fileIcons

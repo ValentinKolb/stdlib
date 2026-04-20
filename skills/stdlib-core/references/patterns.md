@@ -136,30 +136,30 @@ All functions accept `string | Date`, use UTC methods, and are timezone-independ
 **When to use:** Building a calendar UI with month/week views, item filtering, and navigation.
 
 ```ts
-import { calendar } from "@valentinkolb/stdlib";
+import { dates } from "@valentinkolb/stdlib";
 
 // 1. Generate the grid for the current month
 const now = new Date();
-const weeks = calendar.getMonthGrid(now.getFullYear(), now.getMonth());
+const weeks = dates.getMonthGrid(now.getFullYear(), now.getMonth());
 // weeks = Date[][] (4-6 rows of 7 days, Mon-Sun)
 
 // 2. Get the data range for fetching items from the API
-const range = calendar.getDateRange("month", now);
+const range = dates.getDateRange("month", now);
 const items = await api.getItems({ from: range.from, to: range.to });
 
 // 3. For each day cell, filter items that belong to that day
 weeks.forEach(week =>
   week.forEach(day => {
-    const dayItems = calendar.getDayItems(items, day);
-    const isCurrentMonth = calendar.isSameMonth(day, now);
-    const isCurrentDay = calendar.isToday(day);
+    const dayItems = dates.getDayItems(items, day);
+    const isCurrentMonth = dates.isSameMonth(day, now);
+    const isCurrentDay = dates.isToday(day);
     // render cell with dayItems, dim if !isCurrentMonth, highlight if isCurrentDay
   })
 );
 
 // 4. Navigation: previous/next month
-const prev = calendar.addMonths(now, -1);
-const next = calendar.addMonths(now, 1);
+const prev = dates.addMonths(now, -1);
+const next = dates.addMonths(now, 1);
 ```
 
 Remember: `getMonthGrid` month parameter is 0-indexed (0 = January). `WEEKDAYS_SHORT` is Monday-first -- do not index with `Date.getDay()`.

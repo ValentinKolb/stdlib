@@ -24,7 +24,7 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, password, dates, calendar, timing, streaming, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, timing, streaming, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
 ```
 
 Every namespace is also a plain object, so you can destructure or use dot-access:
@@ -304,9 +304,9 @@ dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day 3 hours"
 
 ---
 
-## calendar
+## dates (calendar views)
 
-Calendar grid generation and date utilities. Uses native Intl.DateTimeFormat with locale parameter support. Weeks are ISO (Monday-first).
+Calendar grid generation, date arithmetic, and formatting are all part of the `dates` module (not a separate `calendar` module).
 
 ### Types
 
@@ -319,70 +319,74 @@ type CalendarUrlParams = { view?: "month" | "week"; date?: Date; item?: string }
 
 ```ts
 // Grid generation
-calendar.getMonthGrid(year: number, month: number): Date[][]   // month is 0-indexed, returns 4-6 weeks of 7 days
-calendar.getWeekDays(date: Date): Date[]                        // 7 days, Monday-Sunday
+dates.getMonthGrid(year: number, month: number): Date[][]   // month is 0-indexed, returns 4-6 weeks of 7 days
+dates.getWeekDays(date: Date): Date[]                        // 7 days, Monday-Sunday
 
 // Date ranges
-calendar.getDateRange(view: "month" | "week", date: Date): { from: Date; to: Date }
+dates.getDateRange(view: "month" | "week", date: Date): { from: Date; to: Date }
 
 // Item filtering
-calendar.itemOnDate(item: CalendarItemLike, date: Date): boolean
-calendar.getDayItems<T extends CalendarItemLike>(items: T[], date: Date): T[]
+dates.itemOnDate(item: CalendarItemLike, date: Date): boolean
+dates.getDayItems<T extends CalendarItemLike>(items: T[], date: Date): T[]
 
 // Date checks
-calendar.isToday(date: Date): boolean
-calendar.isSameMonth(date: Date, refDate: Date): boolean
-calendar.isSameDay(a: Date, b: Date): boolean
+dates.isToday(date: Date): boolean
+dates.isSameMonth(date: Date, refDate: Date): boolean
+dates.isSameDay(a: Date, b: Date): boolean
 
-// Formatting
-calendar.formatMonthYear(date: Date): string          // "March 2025"
-calendar.formatDayNumber(date: Date): string           // "9"
-calendar.formatWeekdayShort(date: Date): string        // "Mo"
-calendar.formatWeekdayLong(date: Date): string         // "Wednesday"
-calendar.formatFullDate(date: Date): string            // "9. March 2025"
-calendar.formatDateShort(date: Date): string           // "9.3."
-calendar.formatDateKey(date: Date): string             // "2025-03-09"
-calendar.formatTime(iso: string): string               // "14:30"
+// Locale-aware formatting
+dates.formatMonthYear(date: Date, locale?: string): string   // "March 2025"
+dates.formatDayNumber(date: Date): string                     // "9"
+dates.formatWeekdayShort(date: Date, locale?: string): string // "Mon"
+dates.formatWeekdayLong(date: Date, locale?: string): string  // "Wednesday"
+dates.formatFullDate(date: Date, locale?: string): string     // "March 9, 2025"
+dates.formatDateShort(date: Date, locale?: string): string    // "3/9"
+dates.formatDateKey(date: Date): string                       // "2025-03-09"
+dates.formatTime(iso: string): string                         // "14:30"
 
 // Navigation
-calendar.addMonths(date: Date, n: number): Date
-calendar.addWeeks(date: Date, n: number): Date
-calendar.addDays(date: Date, n: number): Date
-calendar.startOfMonth(date: Date): Date
-calendar.startOfWeek(date: Date): Date                 // Monday (ISO)
-calendar.today(): Date                                 // start of current day
+dates.addMonths(date: Date, n: number): Date
+dates.addWeeks(date: Date, n: number): Date
+dates.addDays(date: Date, n: number): Date
+dates.startOfMonth(date: Date): Date
+dates.startOfWeek(date: Date): Date                           // Monday (ISO)
+dates.today(): Date                                           // start of current day
 
-// Constants
-calendar.WEEKDAYS_SHORT: string[]                      // ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
-calendar.MONTHS: string[]                              // ["January","February",...,"December"]
-calendar.getYearOptions(): number[]                    // current year +/- 5
+// Dynamic locale-aware constants
+dates.weekdays(locale?: string, style?: "short" | "long"): string[]  // ["Mon","Tue",...] or ["Monday",...]
+dates.months(locale?: string, style?: "short" | "long"): string[]    // ["January",...] or ["Jan",...]
+dates.getYearOptions(): number[]                              // current year +/- 5
 
 // URL helpers
-calendar.buildCalendarUrl(baseUrl: string, params: CalendarUrlParams): string
-calendar.parseCalendarDate(param: string | undefined): Date
+dates.buildCalendarUrl(baseUrl: string, params: CalendarUrlParams): string
+dates.parseCalendarDate(param: string | undefined): Date
 ```
 
 ### Examples
 
 ```ts
-import { calendar } from "@valentinkolb/stdlib";
+import { dates } from "@valentinkolb/stdlib";
 
-const weeks = calendar.getMonthGrid(2025, 2);  // March 2025
+const weeks = dates.getMonthGrid(2025, 2);  // March 2025
 // weeks[0] = [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
 
-const range = calendar.getDateRange("month", new Date());
+const range = dates.getDateRange("month", new Date());
 // { from: Date, to: Date } -- full month incl. padding days
 
-const items = calendar.getDayItems(allItems, new Date());
+const items = dates.getDayItems(allItems, new Date());
 // only items that overlap today
 
-const nextMonth = calendar.addMonths(new Date(), 1);
+const nextMonth = dates.addMonths(new Date(), 1);
+
+// Locale-aware
+dates.formatMonthYear(new Date(), "de");  // "März 2025"
+dates.weekdays("fr");                      // ["lun.", "mar.", ...]
 ```
 
 **Gotchas:**
 - `month` parameter is 0-indexed (0 = January).
-- `WEEKDAYS_SHORT` is Monday-first (ISO). Do NOT index with `Date.getDay()` which is Sunday-first.
 - `getMonthGrid` includes padding days from adjacent months.
+- All formatting uses native `Intl.DateTimeFormat` — supports any locale.
 
 ---
 

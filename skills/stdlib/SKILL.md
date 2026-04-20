@@ -24,7 +24,7 @@ sub-paths.
 
 | Import path | Runtime | Modules |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `calendar`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
+| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
 | `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore`, `theme` |
 | `@valentinkolb/stdlib/solid` | SolidJS components | `mutation`, `timed`, `hotkeys`, `dnd`, `detailPanel`, `localStore`, `clipboard`, `clickOutside`, `dropzone`, `a11y` |
 
@@ -70,7 +70,7 @@ sub-paths.
 | Format dates (`"05 Mar 2025"`) | `dates.formatDate/formatDateTime` | core |
 | Show relative time (`"3 mins ago"`) | `dates.formatDateTimeRelative` | core |
 | Format durations | `dates.formatDuration` | core |
-| Build a calendar month grid | `calendar.getMonthGrid` | core |
+| Build a calendar month grid | `dates.getMonthGrid` | core |
 | Sleep / add jitter / random numbers | `timing.sleep/jitter/random/shuffle` | core |
 | Buffer writes (coalesce by key) | `timing.buffer` | core |
 | Enforce minimum load time | `timing.withMinLoadTime` | core |
@@ -166,6 +166,6 @@ sub-paths.
 
 For full API documentation on each entry point, read the specific skill:
 
-- **`stdlib-core`** -- encoding, crypto, password, result, dates, calendar, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
+- **`stdlib-core`** -- encoding, crypto, password, result, dates, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
 - **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore, theme
 - **`stdlib-solid`** -- localStore, mutation, dnd, hotkeys, dropzone, clickOutside, clipboard, detailPanel, timed, a11y
