@@ -1,5 +1,6 @@
 export * from "./encoding";
 export * from "./crypto";
+export * from "./password";
 export * from "./dates";
 export * from "./fileicons";
 export * from "./gradients";
