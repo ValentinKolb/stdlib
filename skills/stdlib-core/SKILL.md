@@ -4,7 +4,7 @@ description: >
   ALWAYS use when code imports from "@valentinkolb/stdlib" or when the user needs
   encoding (Base64/Hex/Base32/Base62), hashing (SHA-256, FNV-1a), cryptography (asymmetric
   ECDSA+ECDH key pairs, symmetric AES-256-GCM encryption, TOTP two-factor auth),
-  password generation (random, memorable, PIN), date/time formatting (UTC dates,
+  password generation and strength analysis (random, memorable, PIN, strength), date/time formatting (UTC dates,
   relative time, durations, time spans), calendar utilities (month/week grids,
   date range calculation, item filtering, navigation helpers), timing helpers
   (sleep, buffer, jitter, random, shuffle, withMinLoadTime, debounce, throttle),
@@ -24,7 +24,7 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, dates, calendar, timing, streaming, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, calendar, timing, streaming, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
 ```
 
 Every namespace is also a plain object, so you can destructure or use dot-access:
@@ -84,7 +84,7 @@ encoding.fromBase62("8M0kX");       // 123456789
 
 ## crypto
 
-Cryptographic utilities organized into sub-namespaces: `common`, `password`, `asymmetric`, `symmetric`, `totp`.
+Cryptographic utilities organized into sub-namespaces: `common`, `asymmetric`, `symmetric`, `totp`. Password generation has moved to the separate `password` module (see below).
 
 ### crypto.common
 
@@ -105,30 +105,6 @@ crypto.common.readableId();              // "a3X-B7nm-4Kp-qR9v"
 crypto.common.readableId(5, 5);          // "3nK4p-Xm9Bq"
 crypto.common.uuid();                    // "550e8400-e29b-..."
 const key = crypto.common.generateKey(); // 64-char hex string
-```
-
-### crypto.password
-
-```ts
-crypto.password.random(options?: RandomPasswordOptions): string
-// options: { length?: number (4-64, default 20), uppercase?: boolean (true), numbers?: boolean (true), symbols?: boolean (false) }
-
-crypto.password.memorable(options?: MemorablePasswordOptions): string
-// options: { words?: number (3-10, default 4), capitalize?: boolean (false), fullWords?: boolean (true), separator?: string ("-"), addNumber?: boolean (false), addSymbol?: boolean (false) }
-
-crypto.password.pin(options?: PinPasswordOptions): string
-// options: { length?: number (3-12, default 6) }
-```
-
-```ts
-import { crypto } from "@valentinkolb/stdlib";
-
-crypto.password.random();                                    // "aB3kLm9xQr2Wp5Nj7Ht"
-crypto.password.random({ length: 32, symbols: true });       // includes !@#$%^&*...
-crypto.password.memorable();                                 // "correct-horse-battery-staple"
-crypto.password.memorable({ capitalize: true, addNumber: true }); // "Correct-Horse-7-Battery-Staple"
-crypto.password.pin();                                       // "384729"
-crypto.password.pin({ length: 8 });                          // "38472916"
 ```
 
 ### crypto.asymmetric
@@ -228,6 +204,65 @@ const ok = await crypto.totp.verify({ token: "123456", secret });
 - Uses SHA-1 (required by the TOTP spec), 6 digits, 30-second period.
 - Uses constant-time comparison to prevent timing attacks.
 - Never throws -- returns `false` on invalid Base32 or crypto errors.
+
+---
+
+## password
+
+Password generation and strength analysis. Separated from crypto for tree-shaking -- the 5KB EFF wordlist is only loaded when you import `password`.
+
+### Types
+
+```ts
+type PasswordStrength = {
+  entropy: number;       // bits of entropy
+  score: number;         // 0-4 (0 = very weak, 4 = very strong)
+  label: string;         // "very weak" | "weak" | "fair" | "strong" | "very strong"
+  crackTime: string;     // human-readable crack time estimate, e.g. "centuries"
+  feedback: string[];    // improvement suggestions, empty when strong
+};
+```
+
+### API
+
+```ts
+password.random(options?: RandomPasswordOptions): string
+// options: { length?: number (4-64, default 20), uppercase?: boolean (true), numbers?: boolean (true), symbols?: boolean (false) }
+
+password.memorable(options?: MemorablePasswordOptions): string
+// options: { words?: number (3-10, default 4), capitalize?: boolean (false), fullWords?: boolean (true), separator?: string ("-"), addNumber?: boolean (false), addSymbol?: boolean (false) }
+
+password.pin(options?: PinPasswordOptions): string
+// options: { length?: number (3-12, default 6) }
+
+password.strength(pw: string): PasswordStrength
+// Analyses entropy, estimates crack time, returns score and actionable feedback.
+```
+
+### Examples
+
+```ts
+import { password } from "@valentinkolb/stdlib";
+
+password.random();                                    // "aB3kLm9xQr2Wp5Nj7Ht"
+password.random({ length: 32, symbols: true });       // includes !@#$%^&*...
+password.memorable();                                 // "correct-horse-battery-staple"
+password.memorable({ capitalize: true, addNumber: true }); // "Correct-Horse-7-Battery-Staple"
+password.pin();                                       // "384729"
+password.pin({ length: 8 });                          // "38472916"
+
+// Strength analysis
+const strong = password.strength("correct-horse-battery-staple");
+// { entropy: 41.36, score: 3, label: "strong", crackTime: "centuries", feedback: [] }
+
+const weak = password.strength("password123");
+// { entropy: 12.7, score: 1, label: "weak", crackTime: "seconds", feedback: ["Add more characters", ...] }
+```
+
+**Gotchas:**
+- The memorable generator uses the EFF Short Wordlist 1 (1,296 words, 10.34 bits/word).
+- `strength` is a pure synchronous function -- no crypto calls involved.
+- `random` and `pin` use `crypto.getRandomValues` (cryptographically secure).
 
 ---
 

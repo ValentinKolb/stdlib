@@ -3,10 +3,11 @@ name: stdlib-browser
 description: >
   Browser utility modules from @valentinkolb/stdlib/browser: file downloads/ZIP/dialogs/OPFS/path builder/MIME utils (files),
   chainable image processing pipeline (images), JSON and string cookie management (cookies), clipboard copy (clipboard),
-  native browser notification permission and display (notifications), and OPFS-backed persistent key-value store with
-  cross-tab sync (kvStore). Activates when code imports from "@valentinkolb/stdlib/browser" or when the user needs
-  file downloads, ZIP archives, file picker dialogs, Origin Private File System access, browser image resize/crop/filter,
-  cookie read/write, clipboard copy, browser push notifications, or a localStorage alternative without size limits.
+  native browser notification permission and display (notifications), OPFS-backed persistent key-value store with
+  cross-tab sync (kvStore), and light/dark mode toggle with cookie persistence (theme). Activates when code imports
+  from "@valentinkolb/stdlib/browser" or when the user needs file downloads, ZIP archives, file picker dialogs,
+  Origin Private File System access, browser image resize/crop/filter, cookie read/write, clipboard copy, browser
+  push notifications, a localStorage alternative without size limits, or light/dark theme toggling.
 ---
 
 # @valentinkolb/stdlib/browser
@@ -23,6 +24,7 @@ import {
   clipboard,
   notifications,
   kvStore,
+  theme,
 } from "@valentinkolb/stdlib/browser";
 ```
 
@@ -846,6 +848,34 @@ const unwatch = kvStore.watch((e) => {
 
 // Later: stop watching
 unwatch();
+```
+
+---
+
+## theme
+
+Light/dark mode toggle with cookie persistence. SSR-safe.
+
+### theme.getCurrent
+Returns current theme by checking `document.documentElement` for `dark` class.
+Returns `"light"` in SSR.
+
+```ts
+theme.getCurrent(): "light" | "dark"
+```
+
+### theme.set
+Applies theme class to document root and persists to cookie.
+
+```ts
+theme.set(mode: "light" | "dark"): "light" | "dark"
+```
+
+### theme.toggle
+Switches to opposite theme and persists.
+
+```ts
+theme.toggle(): "light" | "dark"
 ```
 
 ---

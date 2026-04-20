@@ -1,7 +1,7 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, dates, calendar, fileIcons, gradients, result, qr, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, calendar, fileIcons, gradients, result, qr, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
 ```
 
 ## encoding
@@ -29,7 +29,7 @@ encoding.fromBase62("8M0kX");        // 123456789
 
 ## crypto
 
-SHA-256 hashing, key generation, password generation, symmetric/asymmetric encryption, TOTP, and digital signatures. All built on the Web Crypto API.
+SHA-256 hashing, key generation, symmetric/asymmetric encryption, TOTP, and digital signatures. All built on the Web Crypto API.
 
 ### Common utilities
 
@@ -42,17 +42,6 @@ crypto.common.uuid();                       // crypto.randomUUID()
 crypto.common.readableId();                 // "a3X-B7nm-4Kp-qR9v"
 crypto.common.readableId(5, 5);             // "3nK4p-Xm9Bq"
 crypto.common.generateKey();                // 256-bit hex key
-```
-
-### Password generation
-
-```ts
-crypto.password.random();                   // "xK9mPq2nRt..." (20 chars)
-crypto.password.random({ length: 32, symbols: true });
-crypto.password.memorable();                // "correct-horse-battery-staple"
-crypto.password.memorable({ capitalize: true, addNumber: true });
-crypto.password.pin();                      // "384729"
-crypto.password.pin({ length: 4 });         // "2847"
 ```
 
 ### Symmetric encryption (AES-256-GCM)
@@ -98,6 +87,30 @@ const { uri, secret } = await crypto.totp.create({ label: "user@example.com", is
 // Show `uri` as QR code, store `secret` encrypted
 const ok = await crypto.totp.verify({ token: "123456", secret });
 ```
+
+## password
+
+Password generation and strength analysis. Separated from crypto for tree-shaking -- importing crypto won't pull in the 5KB wordlist.
+
+```ts
+import { password } from "@valentinkolb/stdlib";
+
+password.random();                                    // "aB3kLm9xQr2Wp5Nj7Ht" (20 chars)
+password.random({ length: 32, symbols: true });
+password.memorable();                                 // "correct-horse-battery-staple"
+password.memorable({ capitalize: true, addNumber: true });
+password.pin();                                       // "384729"
+password.pin({ length: 4 });                          // "2847"
+
+// Strength analysis
+password.strength("correct-horse-battery-staple");
+// { entropy: 41.36, score: 3, label: "strong", crackTime: "centuries", feedback: [] }
+
+password.strength("password123");
+// { entropy: 12.7, score: 1, label: "weak", crackTime: "seconds", feedback: ["Add more characters", ...] }
+```
+
+The memorable generator uses the EFF Short Wordlist 1 (1,296 words, 10.34 bits/word).
 
 ## dates
 

@@ -24,8 +24,8 @@ sub-paths.
 
 | Import path | Runtime | Modules |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `dates`, `calendar`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
-| `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore` |
+| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `calendar`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
+| `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore`, `theme` |
 | `@valentinkolb/stdlib/solid` | SolidJS components | `mutation`, `timed`, `hotkeys`, `dnd`, `detailPanel`, `localStore`, `clipboard`, `clickOutside`, `dropzone`, `a11y` |
 
 ## Which module do I need?
@@ -38,7 +38,8 @@ sub-paths.
 | Generate a UUID | `crypto.common.uuid` | core |
 | Generate a readable ID | `crypto.common.readableId` | core |
 | Generate a symmetric key | `crypto.common.generateKey` | core |
-| Generate a random/memorable/PIN password | `crypto.password.random/memorable/pin` | core |
+| Generate a random/memorable/PIN password | `password.random/memorable/pin` | core |
+| Analyse password strength | `password.strength` | core |
 | Sign/verify with ECDSA (asymmetric) | `crypto.asymmetric.sign/verify` | core |
 | Encrypt/decrypt with ECDH+AES-GCM (asymmetric) | `crypto.asymmetric.encrypt/decrypt` | core |
 | Generate an asymmetric key pair | `crypto.asymmetric.generate` | core |
@@ -136,6 +137,7 @@ sub-paths.
 | Read/write cookies (raw or JSON) | `cookies.readCookie/writeCookie/readJsonCookie/writeJsonCookie` | browser |
 | Copy text to clipboard | `clipboard.copy` | browser |
 | Show native notifications | `notifications.show/requestPermission` | browser |
+| Toggle light/dark mode | `theme.toggle/set/getCurrent` | browser |
 
 ### SolidJS Primitives
 | I need to... | Module | Entry point |
@@ -154,6 +156,7 @@ sub-paths.
 ## Cross-Cutting Patterns
 
 - **Namespace objects** -- every module exports a namespace (`crypto`, `images`, `cache`, etc.) with its functions as methods. Individual functions are also available as named exports for direct import.
+- **Tree-shaking split** -- `password` is a separate module from `crypto` so that importing `crypto` does not pull in the 5KB EFF wordlist used by `password.memorable`.
 - **Functional pipelines** -- `images` uses a `.then()` chaining pattern where each transform returns a function `(ImgData | Promise<ImgData>) => Promise<T>`.
 - **Result types** -- use `result.tryCatch` to wrap any async operation; combine with `result.ok/fail/err.*` for typed error handling across the stack.
 - **TTL caching + lazy loading** -- `cache.create({ onMiss, beforePurge })` lets you build transparent caching layers around any data source.
@@ -163,6 +166,6 @@ sub-paths.
 
 For full API documentation on each entry point, read the specific skill:
 
-- **`stdlib-core`** -- encoding, crypto, result, dates, calendar, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
-- **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore
+- **`stdlib-core`** -- encoding, crypto, password, result, dates, calendar, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
+- **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore, theme
 - **`stdlib-solid`** -- localStore, mutation, dnd, hotkeys, dropzone, clickOutside, clipboard, detailPanel, timed, a11y

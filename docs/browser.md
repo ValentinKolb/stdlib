@@ -1,7 +1,7 @@
 # Browser Modules
 
 ```ts
-import { images, files, cookies, clipboard, notifications, kvStore } from "@valentinkolb/stdlib/browser";
+import { images, files, cookies, clipboard, notifications, kvStore, theme } from "@valentinkolb/stdlib/browser";
 ```
 
 All exports require a browser environment (DOM, `navigator`, `document`).
@@ -233,3 +233,16 @@ unwatch();
 ```
 
 Small values (4 KB or less) are stored inline in the index file. Larger values spill into individual blob files. Writes are serialized with Web Locks; reads are lock-free.
+
+## theme
+
+Light/dark mode toggle with cookie persistence. Works with any CSS framework
+that uses a root-level class (Tailwind, etc.). SSR-safe.
+
+```ts
+import { theme } from "@valentinkolb/stdlib/browser";
+
+theme.getCurrent();  // "light" | "dark"
+theme.set("dark");   // applies class + persists to cookie
+theme.toggle();      // switches to opposite mode
+```

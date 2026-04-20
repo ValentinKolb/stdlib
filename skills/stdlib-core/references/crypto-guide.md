@@ -167,20 +167,30 @@ const decrypted = JSON.parse(
 
 ### Password Generation
 
+`password` is a separate module from `crypto` for tree-shaking -- importing `crypto` does not pull in the 5KB EFF wordlist.
+
+```ts
+import { password } from "@valentinkolb/stdlib";
+```
+
 Choose the right generator for the use case:
 
 ```ts
 // Strong random password -- for system accounts, API credentials
-crypto.password.random({ length: 32, symbols: true });
+password.random({ length: 32, symbols: true });
 // "aB3k!Lm9xQr@2Wp5Nj7Ht#4Ys6Fv8Gd"
 
 // Memorable password -- for user-facing passwords they need to type
-crypto.password.memorable({ words: 4, capitalize: true, addNumber: true });
+password.memorable({ words: 4, capitalize: true, addNumber: true });
 // "Correct-Horse-7-Battery-Staple"
 
 // PIN -- for numeric verification codes
-crypto.password.pin({ length: 6 });
+password.pin({ length: 6 });
 // "384729"
+
+// Strength analysis
+password.strength("Correct-Horse-7-Battery-Staple");
+// { entropy: 41.36, score: 3, label: "strong", crackTime: "centuries", feedback: [] }
 ```
 
 ### TOTP 2FA Integration
