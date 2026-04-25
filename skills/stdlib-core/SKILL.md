@@ -519,7 +519,11 @@ String manipulation utilities.
 text.slugify(content: string): string     // "Hello World!" => "hello-world"
 text.humanize(content: string): string    // "hello_world-foo" => "Hello world foo"
 text.titleify(content: string): string    // "hello_world-foo" => "Hello World Foo"
-text.pprintBytes(bytes: number): string   // 1536 => "1.50 KB"
+text.pprintBytes(bytes: number, mode?: "iec" | "si"): string
+// 1536 => "1.5 KiB", (1500, "si") => "1.5 KB". Default mode: "iec".
+
+text.pprintBytesParts(bytes: number, mode?: "iec" | "si"): { value: string; unit: string }
+// 1536 => { value: "1.5", unit: "KiB" } -- for styled UI rendering
 
 text.truncate(content: string, limit: number, mode?: "end" | "start" | "middle"): string
 // Truncates to limit chars with "..." marker. Default mode: "end".
@@ -542,10 +546,12 @@ text.slugify("Uber uns!");         // "uber-uns"
 text.slugify("  ---  ");           // ""
 text.humanize("user_first_name");  // "User first name"
 text.titleify("hello-world");      // "Hello World"
-text.pprintBytes(0);               // "0 bytes"
-text.pprintBytes(1536);            // "1.50 KB"
-text.pprintBytes(1073741824);      // "1.00 GB"
-text.pprintBytes(NaN);             // "0 bytes"
+text.pprintBytes(0);               // "0 B"
+text.pprintBytes(1536);            // "1.5 KiB"   (default IEC, 1024-base)
+text.pprintBytes(1500, "si");      // "1.5 KB"    (SI, 1000-base)
+text.pprintBytes(2 ** 50);         // "1 PiB"
+text.pprintBytes(NaN);             // "0 B"
+text.pprintBytesParts(1536);       // { value: "1.5", unit: "KiB" }
 
 text.truncate("Hello World", 8);           // "Hello..."
 text.truncate("Hello World", 8, "start");  // "...World"
@@ -560,8 +566,10 @@ text.pascalCase("hello_world");    // "HelloWorld"
 
 **Gotchas:**
 - `slugify` does NFKD normalization and strips diacritics. "u" with combining mark becomes "u".
-- `pprintBytes` uses binary units (1 KB = 1024 bytes).
-- `pprintBytes` guards against Infinity, NaN, and non-positive values.
+- `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B). Pass `"si"` for decimal units (1 KB = 1000 B).
+- `pprintBytes` is locale-aware: decimal separator follows the runtime default via `Intl.NumberFormat` (e.g. `"1,5 KiB"` in DE, `"1.5 KiB"` in EN). Thousands grouping is disabled.
+- `pprintBytes` and `pprintBytesParts` guard against Infinity, NaN, and non-positive values, returning `"0 B"` / `{ value: "0", unit: "B" }`.
+- `pprintBytesParts` is the right call when you want to style value and unit independently in a UI (e.g. large number, small unit label).
 - `truncate` counts the `"..."` marker towards the limit. If `limit` < 4, returns the raw truncation without a marker.
 - `summarize` breaks at the last space before the limit, so the result may be shorter than `limit`.
 - Case conversion functions split on hyphens, underscores, spaces, and camelCase boundaries.

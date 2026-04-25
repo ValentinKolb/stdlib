@@ -73,41 +73,85 @@ export const titleify = (content: string): string => {
 };
 
 /**
- * Pretty-print a byte count in human-readable format.
+ * Mode for byte size formatting.
  *
- * Uses binary units (1 KB = 1024 bytes) with the progression:
- * bytes -> KB -> MB -> GB -> TB.
+ * - `"iec"` -- binary (1 KiB = 1024 B), units: B, KiB, MiB, GiB, TiB, PiB.
+ * - `"si"`  -- decimal (1 KB = 1000 B), units: B, KB, MB, GB, TB, PB.
+ */
+export type ByteMode = "iec" | "si";
+
+const IEC_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
+const SI_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
+
+/**
+ * Split a byte count into a localized numeric string and its unit.
+ *
+ * Useful when you want to render the value and unit with different styles
+ * (e.g. a large number next to a small unit label).
+ *
+ * Decimal places are picked for readability: 0 when the value >= 100,
+ * 1 when >= 10, and 2 otherwise. Raw bytes (exponent 0) are integer-formatted.
+ *
+ * Locale follows the runtime default via `Intl.NumberFormat` -- so a German
+ * UI gets `"1,5"` while an English UI gets `"1.5"`. Thousands grouping is
+ * disabled to avoid `"1.023 B"`-style ambiguity in locales that use `.`
+ * as the grouping separator.
  *
  * Guards against `Infinity`, `NaN`, and non-positive values by returning
- * `"0 bytes"`. Decimal places are adjusted for readability: 0 decimals
- * when the value >= 100, 1 decimal when >= 10, and 2 decimals otherwise.
+ * `{ value: "0", unit: "B" }`.
  *
- * @param bytes - Number of bytes (must be a finite positive number).
- * @returns A human-readable size string, e.g. `"1.50 KB"`, `"512 MB"`.
+ * @param bytes - Number of bytes.
+ * @param mode  - `"iec"` (default, 1024-base) or `"si"` (1000-base).
  *
- * @example text.pprintBytes(0)      // "0 bytes"
- * @example text.pprintBytes(1536)   // "1.50 KB"
- * @example text.pprintBytes(NaN)    // "0 bytes"
+ * @example text.pprintBytesParts(1536)         // { value: "1.5",  unit: "KiB" }
+ * @example text.pprintBytesParts(1500, "si")   // { value: "1.5",  unit: "KB"  }
+ * @example text.pprintBytesParts(0)            // { value: "0",    unit: "B"   }
  */
-export const pprintBytes = (bytes: number): string => {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 bytes";
+export const pprintBytesParts = (
+  bytes: number,
+  mode: ByteMode = "iec",
+): { value: string; unit: string } => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return { value: "0", unit: "B" };
 
-  const units = ["bytes", "KB", "MB", "GB", "TB"];
-  const base = 1024;
+  const units = mode === "si" ? SI_UNITS : IEC_UNITS;
+  const base = mode === "si" ? 1000 : 1024;
 
-  const exponent = Math.floor(Math.log(bytes) / Math.log(base));
-  const unit = units[Math.min(exponent, units.length - 1)];
-
-  if (exponent === 0) {
-    return `${bytes} ${unit}`;
-  }
-
+  const exponent = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(base)),
+    units.length - 1,
+  );
+  const unit = units[exponent]!;
   const value = bytes / Math.pow(base, exponent);
 
-  // Show appropriate decimal places
-  const decimals = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  const decimals = exponent === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2;
 
-  return `${value.toFixed(decimals)} ${unit}`;
+  const formatted = new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+    useGrouping: false,
+  }).format(value);
+
+  return { value: formatted, unit };
+};
+
+/**
+ * Pretty-print a byte count as a human-readable string.
+ *
+ * Defaults to IEC binary units (1 KiB = 1024 B). Pass `"si"` for decimal
+ * units (1 KB = 1000 B). See {@link pprintBytesParts} for a variant that
+ * returns value and unit separately for styled rendering.
+ *
+ * @param bytes - Number of bytes.
+ * @param mode  - `"iec"` (default) or `"si"`.
+ *
+ * @example text.pprintBytes(0)            // "0 B"
+ * @example text.pprintBytes(1536)         // "1.5 KiB"
+ * @example text.pprintBytes(1500, "si")   // "1.5 KB"
+ * @example text.pprintBytes(NaN)          // "0 B"
+ */
+export const pprintBytes = (bytes: number, mode: ByteMode = "iec"): string => {
+  const { value, unit } = pprintBytesParts(bytes, mode);
+  return `${value} ${unit}`;
 };
 
 /**
@@ -254,6 +298,7 @@ export const text = {
   humanize,
   titleify,
   pprintBytes,
+  pprintBytesParts,
   truncate,
   summarize,
   camelCase,

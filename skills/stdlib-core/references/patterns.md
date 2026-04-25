@@ -251,12 +251,20 @@ const label = text.humanize("user_first_name");
 const heading = text.titleify("hello_world-foo");
 // "Hello World Foo"
 
-// File size display
+// File size display (IEC default — 1024-base, locale-aware decimal)
 const size = text.pprintBytes(15728640);
-// "15.0 MB"
+// "15 MiB"
+
+// SI mode (1000-base) when you want disk-vendor-style sizes
+const siSize = text.pprintBytes(15_000_000, "si");
+// "15 MB"
+
+// Split for styled UI rendering
+const { value, unit } = text.pprintBytesParts(15728640);
+// { value: "15", unit: "MiB" }
 ```
 
-`slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". `pprintBytes` uses binary units (1 KB = 1024 bytes) and handles edge cases (`NaN`, `Infinity`, `0` all return `"0 bytes"`).
+`slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B); pass `"si"` for decimal units (1 KB = 1000 B). Decimal separator follows the runtime locale via `Intl.NumberFormat`. Edge cases (`NaN`, `Infinity`, `0`, negative) return `"0 B"`.
 
 ---
 

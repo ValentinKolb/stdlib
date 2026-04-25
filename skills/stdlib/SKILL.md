@@ -85,7 +85,7 @@ sub-paths.
 | Humanize/titleify a string | `text.humanize/titleify` | core |
 | Truncate or summarize a string | `text.truncate/summarize` | core |
 | Convert between camelCase/snake_case/kebab-case/PascalCase | `text.camelCase/snakeCase/kebabCase/pascalCase` | core |
-| Pretty-print byte sizes | `text.pprintBytes` | core |
+| Pretty-print byte sizes (IEC/SI, locale-aware, value/unit split) | `text.pprintBytes`, `text.pprintBytesParts` | core |
 | Get a file icon/category | `fileicons.getFileCategory/getFileIcon` | core |
 | Get gradient presets for names | `gradients.gradientPresets` | core |
 

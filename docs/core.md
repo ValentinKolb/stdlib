@@ -315,8 +315,11 @@ import { text } from "@valentinkolb/stdlib";
 text.slugify("Hello World!");     // "hello-world"
 text.humanize("hello_world-foo"); // "Hello world foo"
 text.titleify("hello_world-foo"); // "Hello World Foo"
-text.pprintBytes(1536);           // "1.50 KB"
-text.pprintBytes(0);              // "0 bytes"
+text.pprintBytes(1536);                // "1.5 KiB" (IEC default, 1024-base; locale-aware decimal)
+text.pprintBytes(1500, "si");          // "1.5 KB"  (SI mode, 1000-base)
+text.pprintBytes(0);                   // "0 B"
+text.pprintBytesParts(1536);           // { value: "1.5", unit: "KiB" } — for styled UI rendering
+text.pprintBytesParts(1500, "si");     // { value: "1.5", unit: "KB"  }
 
 // Truncation and summarization
 text.truncate("Hello World", 8);               // "Hello..."

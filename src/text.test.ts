@@ -4,6 +4,7 @@ import {
   humanize,
   titleify,
   pprintBytes,
+  pprintBytesParts,
   truncate,
   summarize,
   camelCase,
@@ -91,33 +92,70 @@ describe("titleify", () => {
 // ==========================
 
 describe("pprintBytes", () => {
-  it("returns '0 bytes' for zero", () => {
-    expect(pprintBytes(0)).toBe("0 bytes");
+  it("returns '0 B' for zero", () => {
+    expect(pprintBytes(0)).toBe("0 B");
   });
 
-  it("returns bytes for small values", () => {
-    expect(pprintBytes(512)).toBe("512 bytes");
+  it("returns raw bytes without decimals", () => {
+    expect(pprintBytes(512)).toBe("512 B");
+    expect(pprintBytes(1023)).toBe("1023 B");
   });
 
-  it("formats KB with two decimals when < 10 KB", () => {
-    expect(pprintBytes(1536)).toBe("1.50 KB");
+  it("defaults to IEC (1024-base) with KiB/MiB/GiB/TiB/PiB labels", () => {
+    expect(pprintBytes(1024)).toBe("1 KiB");
+    expect(pprintBytes(1536)).toBe("1.5 KiB");
+    expect(pprintBytes(1024 ** 2)).toBe("1 MiB");
+    expect(pprintBytes(1024 ** 3)).toBe("1 GiB");
+    expect(pprintBytes(1024 ** 4)).toBe("1 TiB");
+    expect(pprintBytes(1024 ** 5)).toBe("1 PiB");
   });
 
-  it("formats MB", () => {
-    expect(pprintBytes(1048576)).toBe("1.00 MB");
+  it("uses SI (1000-base) with KB/MB/GB/TB/PB labels in si mode", () => {
+    expect(pprintBytes(1000, "si")).toBe("1 KB");
+    expect(pprintBytes(1500, "si")).toBe("1.5 KB");
+    expect(pprintBytes(1_000_000, "si")).toBe("1 MB");
+    expect(pprintBytes(1_000_000_000, "si")).toBe("1 GB");
+    expect(pprintBytes(1e12, "si")).toBe("1 TB");
+    expect(pprintBytes(1e15, "si")).toBe("1 PB");
   });
 
-  it("formats GB", () => {
-    expect(pprintBytes(1073741824)).toBe("1.00 GB");
+  it("scales decimals by magnitude (2 / 1 / 0)", () => {
+    expect(pprintBytes(1024 + 512)).toBe("1.5 KiB"); // < 10 -> 1-2 dec
+    expect(pprintBytes(15 * 1024)).toBe("15 KiB"); // >= 10 -> 1 dec, .0 trimmed
+    expect(pprintBytes(15.5 * 1024)).toBe("15.5 KiB");
+    expect(pprintBytes(123 * 1024 * 1024)).toBe("123 MiB"); // >= 100 -> 0 dec
   });
 
-  it("reduces decimals for larger values", () => {
-    // 123 MB -> 0 decimals
-    expect(pprintBytes(123 * 1024 * 1024)).toBe("123 MB");
+  it("caps at the largest unit instead of overflowing", () => {
+    // 2048 PiB still rendered in PiB
+    expect(pprintBytes(2 * 1024 ** 5)).toBe("2 PiB");
   });
 
-  it("returns '0 bytes' for negative values", () => {
-    expect(pprintBytes(-100)).toBe("0 bytes");
+  it("returns '0 B' for negative, NaN, and Infinity", () => {
+    expect(pprintBytes(-100)).toBe("0 B");
+    expect(pprintBytes(Number.NaN)).toBe("0 B");
+    expect(pprintBytes(Number.POSITIVE_INFINITY)).toBe("0 B");
+  });
+});
+
+// ==========================
+// pprintBytesParts
+// ==========================
+
+describe("pprintBytesParts", () => {
+  it("splits value and unit", () => {
+    expect(pprintBytesParts(1536)).toEqual({ value: "1.5", unit: "KiB" });
+    expect(pprintBytesParts(1500, "si")).toEqual({ value: "1.5", unit: "KB" });
+  });
+
+  it("returns { '0', 'B' } for invalid input", () => {
+    expect(pprintBytesParts(0)).toEqual({ value: "0", unit: "B" });
+    expect(pprintBytesParts(-1)).toEqual({ value: "0", unit: "B" });
+    expect(pprintBytesParts(Number.NaN)).toEqual({ value: "0", unit: "B" });
+  });
+
+  it("formats raw bytes without decimals", () => {
+    expect(pprintBytesParts(512)).toEqual({ value: "512", unit: "B" });
   });
 });
 
