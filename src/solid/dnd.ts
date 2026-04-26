@@ -391,6 +391,12 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
   };
 
   const clearPointerListeners = () => {
+    // Guard for SSR: destroy() may run during server-side cleanNode where
+    // `window` is undefined. There are no listeners to remove server-side
+    // because the activation path that attaches them only runs on a real
+    // user pointer event. Same defensive-no-op pattern as createLiveRegion
+    // and lockSelection above.
+    if (typeof window === "undefined") return;
     window.removeEventListener("pointermove", onWindowPointerMove);
     window.removeEventListener("pointerup", onWindowPointerUp);
     window.removeEventListener("pointercancel", onWindowPointerCancel);
