@@ -24,7 +24,8 @@ sub-paths.
 
 | Import path | Runtime | Modules |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `fileicons`, `gradients`, `result`, `qr`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
+| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `fileicons`, `gradients`, `result`, `svg`, `timing`, `streaming`, `text`, `searchParams`, `cache` |
+| `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr` peer) | `qr` -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore`, `theme` |
 | `@valentinkolb/stdlib/solid` | SolidJS components | `mutation`, `timed`, `hotkeys`, `dnd`, `detailPanel`, `localStore`, `clipboard`, `clickOutside`, `dropzone`, `a11y` |
 

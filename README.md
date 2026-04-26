@@ -23,7 +23,8 @@ bun add solid-js lean-qr
 
 | Import | Environment | What's inside |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal | encoding, crypto, password, dates, text, cache, result, qr, svg, timing, streaming, search-params, file-icons, gradients |
+| `@valentinkolb/stdlib` | Universal | encoding, crypto, password, dates, text, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
+| `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@valentinkolb/stdlib/browser` | Browser | files, images, cookies, clipboard, notifications, kv-store, theme |
 | `@valentinkolb/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
 

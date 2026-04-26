@@ -4,8 +4,11 @@
  * Payload generators are pure functions that produce standard QR code strings.
  * Rendering wraps lean-qr to produce scalable SVGs.
  *
+ * Imported via the `/qr` subpath so that the root barrel does not pull in the
+ * optional `lean-qr` peer dependency for consumers that don't use QR features.
+ *
  * @example
- * import { qr } from "@valentinkolb/stdlib";
+ * import { qr } from "@valentinkolb/stdlib/qr";
  *
  * const data = qr.wifi({ ssid: "Office", password: "secret", encryption: "WPA" });
  * const svg = qr.toSvg(data, { correctionLevel: "M", on: "#000", off: "#fff" });

@@ -24,7 +24,8 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, password, dates, timing, streaming, text, cache, result, qr, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, timing, streaming, text, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
 Every namespace is also a plain object, so you can destructure or use dot-access:
@@ -744,7 +745,9 @@ const result2 = await tryCatch(() => riskyOperation());
 
 ## qr
 
-QR code payload generation and SVG rendering. Uses `lean-qr`.
+QR code payload generation and SVG rendering. Lives behind the
+`@valentinkolb/stdlib/qr` subpath so the optional `lean-qr` peer dependency
+is only required for consumers that actually use QR features.
 
 ### API
 
@@ -768,7 +771,7 @@ qr.toSvg(data: string, opts?: { on?: string; off?: string; correctionLevel?: "L"
 ### Examples
 
 ```ts
-import { qr } from "@valentinkolb/stdlib";
+import { qr } from "@valentinkolb/stdlib/qr";
 
 // WiFi QR code
 const wifiData = qr.wifi({ ssid: "Office", password: "secret", encryption: "WPA" });

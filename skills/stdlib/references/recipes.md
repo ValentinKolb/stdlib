@@ -167,7 +167,8 @@ Generate a vCard QR code with a deterministic SVG avatar, ready to embed in a
 page or download.
 
 ```ts
-import { qr, svg } from "@valentinkolb/stdlib";
+import { svg } from "@valentinkolb/stdlib";
+import { qr } from "@valentinkolb/stdlib/qr";
 
 function renderBusinessCard(contact: {
   firstName: string;

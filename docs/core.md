@@ -1,7 +1,8 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, password, dates, fileIcons, gradients, result, qr, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
+import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
 ## encoding
@@ -216,10 +217,12 @@ okMany(items, { page, perPage, total: 100 });
 
 ## qr
 
-QR code payload generators and SVG rendering. Requires `lean-qr` peer dependency.
+QR code payload generators and SVG rendering. Lives behind the `/qr` subpath
+so the optional `lean-qr` peer dependency is only required for consumers that
+actually use QR features.
 
 ```ts
-import { qr } from "@valentinkolb/stdlib";
+import { qr } from "@valentinkolb/stdlib/qr";
 
 // Generate payloads
 qr.wifi({ ssid: "Office", password: "secret" });

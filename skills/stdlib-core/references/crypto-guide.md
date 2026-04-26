@@ -58,7 +58,8 @@ const { uri, secret } = await crypto.totp.create({
   issuer: "MyApp",
 });
 
-// Step 2: Show QR code of `uri` to the user (use qr.toSvg)
+// Step 2: Show QR code of `uri` to the user
+// Note: qr lives behind the `/qr` subpath -- import { qr } from "@valentinkolb/stdlib/qr"
 const qrSvg = qr.toSvg(uri);
 
 // Step 3: Store secret encrypted at rest (NEVER plaintext)

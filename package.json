@@ -18,6 +18,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./qr": "./src/qr.ts",
     "./browser": "./src/browser/index.ts",
     "./solid": "./src/solid/index.ts",
     "./bun": "./src/bun/index.ts"
