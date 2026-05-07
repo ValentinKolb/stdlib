@@ -12,6 +12,7 @@ export * from "./svg";
 export * from "./timing";
 export * from "./text";
 export * from "./fuzzy";
+export * from "./charts";
 export * from "./search-params";
 export * from "./cache";
 export * from "./streaming";

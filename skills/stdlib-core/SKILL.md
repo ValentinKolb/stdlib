@@ -24,7 +24,7 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, charts, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
 import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
@@ -646,6 +646,121 @@ fuzzy.closest("hellp", ["hello", "help"]);
 - `fuzzy.distance` is case-sensitive (lowercase manually for case-insensitive distance). `fuzzy.closest` is case-insensitive by default but preserves the original casing in the returned `value`.
 - The match algorithm is 2D dynamic programming — optimal, not greedy. Worst case O(Q·T) per match; subsequence pre-check rejects non-matches in O(T) before the DP runs. Suitable for live filtering of 10k+ items.
 - `fuzzy.segments` expects sorted, non-overlapping ranges (the canonical shape produced by `match`/`filter`). Pass other shapes at your own risk.
+
+---
+
+## charts
+
+SVG chart generators: scatter, line, bar, pie, donut, and a minimalist
+sparkline. All return SVG strings — inject into the DOM, write to disk, or
+send over the wire. Pure native, no peer dependencies. Stylable via CSS
+classes and CSS custom properties.
+
+### API
+
+```ts
+type Point = { x: number; y: number; size?: number };  // size honored by scatter
+type Series = { label?: string; data: Point[] };
+type BarItem = { label: string; value: number };
+type SliceItem = { label: string; value: number };
+
+type AxisOptions = { ticks?: number; format?: (v: number) => string; label?: string };
+type ChartOptions = {
+  width?: number; height?: number;
+  padding?: number | Partial<{ top: number; right: number; bottom: number; left: number }>;
+  className?: string;
+};
+
+charts.scatter(opts: ChartOptions & {
+  series: Series[]; xAxis?: AxisOptions; yAxis?: AxisOptions;
+  sizeRange?: [number, number];   // pixel-radius range when Point.size is used
+}): string
+
+charts.line(opts: ChartOptions & {
+  series: Series[]; xAxis?: AxisOptions; yAxis?: AxisOptions;
+  smooth?: boolean;               // default true (Catmull-Rom curves)
+}): string
+
+charts.bar(opts: ChartOptions & {
+  data: BarItem[]; yAxis?: AxisOptions;
+  colorByBar?: boolean;           // each bar a different series color
+}): string
+
+charts.pie(opts: ChartOptions & {
+  data: SliceItem[]; showLabels?: boolean; innerRadius?: number;  // 0..0.95
+}): string
+
+charts.donut(opts): string         // pie() with innerRadius default 0.6
+
+charts.sparkline(opts: {
+  data: number[] | Point[];        // bare numbers auto-x to index
+  width?: number; height?: number; // defaults 80x20
+  smooth?: boolean;                // default true
+  showLast?: boolean;              // dot at last point
+  className?: string;
+}): string
+```
+
+### Examples
+
+```ts
+import { charts } from "@valentinkolb/stdlib";
+
+// Multi-series line with formatted axis
+charts.line({
+  series: [
+    { label: "Revenue", data: revenue },
+    { label: "Costs",   data: costs },
+  ],
+  yAxis: { format: v => `$${v}k` },
+  xAxis: { label: "Month" },
+});
+
+// Bubble chart: 3rd dimension via size
+charts.scatter({
+  series: [{ data: [{x:10, y:50, size:200}, {x:20, y:30, size:50}, ...] }],
+  sizeRange: [4, 22],
+});
+
+// Multicolor bar chart
+charts.bar({ data: quarterlyRevenue, colorByBar: true });
+
+// Donut with showLabels
+charts.donut({
+  data: [{label:"Used",value:67},{label:"Free",value:33}],
+  showLabels: true,
+});
+
+// Sparkline with last-point marker
+charts.sparkline({ data: weeklyVisitors, showLast: true });
+```
+
+### Styling
+
+Charts ship with embedded default CSS. Override via:
+
+1. Class selectors (your CSS wins on specificity):
+   ```css
+   .stdlib-chart-line { stroke-width: 3; }
+   ```
+2. CSS custom properties for the 8 default series colors:
+   ```css
+   .stdlib-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
+   ```
+3. `currentColor` is used for axes / tick labels / sparklines — set parent
+   `color` to retheme (dark mode "just works").
+
+Pass `className` to scope per-instance styles.
+
+**Gotchas:**
+- All chart functions return SVG strings, not DOM nodes — caller injects via `innerHTML` or writes to disk.
+- Embedded `<style>` block lists `.stdlib-chart-series-N` rules BEFORE shape-specific rules so shape rules (`fill: none` on line, `stroke: white` on slice/point) win on specificity tie.
+- Empty data renders an empty-state SVG with `.stdlib-chart-empty-text` — except sparkline, which renders a stable-size empty SVG (no text, preserves inline layout).
+- NaN / Infinity values are filtered, never crash.
+- `bar` always includes 0 in the y-domain so bars rest on a visible baseline. Negative values produce bars below the zero line; mixed pos/neg renders an explicit zero line.
+- `pie` filters non-positive values entirely (no zero-sized slices). 100% single-slice renders a full circle (path uses two 180° arcs since a single SVG `A` command can't draw a complete circle unambiguously).
+- `line` and `sparkline` smooth curves use Catmull-Rom→Bezier with tension factor 1/6 (standard, no overshoot for typical UI data). Pass `smooth: false` for straight segments.
+- For multi-series with > 8 series, colors cycle (`series-N` mod 8).
 
 ---
 

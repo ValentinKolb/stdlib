@@ -1,7 +1,7 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, charts, searchParams, cache } from "@valentinkolb/stdlib";
 import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
@@ -380,6 +380,56 @@ The `match` algorithm uses a fzf-inspired scoring heuristic that rewards
 prefix matches, word boundaries (kebab/snake/space/dot/camelCase), contiguous
 runs, and case agreement. Score values are raw and only comparable within a
 single query — use them for sorting, not for cross-query thresholds.
+
+## charts
+
+SVG chart generation: scatter, line (with optional smooth Catmull-Rom curves),
+bar (with positive/negative support and optional per-bar coloring), pie, donut,
+and a minimalist sparkline. Returns SVG strings — inject into the DOM, write
+to disk, or send over the wire. Pure native, no peer dependencies.
+
+```ts
+import { charts } from "@valentinkolb/stdlib";
+
+charts.scatter({ series: [{ data: [{x:1,y:2,size:10},{x:2,y:5,size:30}] }], sizeRange: [3, 14] });
+charts.line({ series: [{ data: [...] }, { data: [...] }] });   // smooth curves by default
+charts.bar({ data: [{label:"Q1",value:120},{label:"Q2",value:180}], colorByBar: true });
+charts.pie({ data: [{label:"A",value:30},{label:"B",value:50}], showLabels: true });
+charts.donut({ data: [...] });                                  // pie with innerRadius 0.6
+charts.sparkline({ data: [3,7,5,9,12,10,14], showLast: true });
+```
+
+### Common options (`ChartOptions`)
+
+| option | default | notes |
+|---|---|---|
+| `width` | 400 (20 sparkline) | viewBox width |
+| `height` | 240 (20 sparkline) | viewBox height |
+| `padding` | `{16, 16, 32, 40}` | number applies to all sides |
+| `className` | — | appended to root `<svg>`'s class |
+
+For axis-bearing charts (`line`, `scatter`, `bar`): `xAxis?` / `yAxis?` accept
+`{ ticks?, format?, label? }`. For series charts (`line`, `scatter`):
+each entry is `{ label?, data: Point[] }`. `Point` is `{ x, y, size? }` —
+`size` controls dot radius in `scatter` (mapped via `sizeRange`).
+
+### Styling
+
+Charts ship with embedded default CSS. Override via:
+
+1. **Class selectors** — your CSS has higher specificity than the embedded `<style>`:
+   ```css
+   .stdlib-chart-line { stroke-width: 3; }
+   .stdlib-chart-bar  { rx: 4; }
+   ```
+2. **CSS custom properties** for the 8 default series colors:
+   ```css
+   .my-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
+   ```
+3. **`currentColor`** is used for axes / tick labels / sparklines — set the
+   parent's `color` to retheme (dark mode "just works").
+
+Pass `className` to scope per-instance styles.
 
 ## searchParams
 
