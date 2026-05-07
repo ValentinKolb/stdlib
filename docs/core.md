@@ -1,7 +1,7 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, searchParams, cache } from "@valentinkolb/stdlib";
 import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
@@ -335,6 +335,51 @@ text.snakeCase("helloWorld");     // "hello_world"
 text.kebabCase("HelloWorld");     // "hello-world"
 text.pascalCase("hello_world");   // "HelloWorld"
 ```
+
+## fuzzy
+
+Subsequence fuzzy match for UI search and Levenshtein distance for "did you
+mean?" lookups. Case-insensitive by default; pass `caseSensitive: true` to
+opt into strict matching.
+
+```ts
+import { fuzzy } from "@valentinkolb/stdlib";
+
+// ─── Subsequence fuzzy match (UI search, command palette) ───────────────
+
+fuzzy.match("udh", "userDashboard");
+// { score: 78, ranges: [[0,1], [4,5], [7,8]] }
+
+fuzzy.match("xyz", "userDashboard");                        // null
+fuzzy.match("UDH", "userDashboard", { caseSensitive: true }); // null
+
+// Filter + rank a list, with optional accessor and limit
+fuzzy.filter("udh", ["userDashboard", "logout", "userHome"]);
+// [{ item, target, score, ranges }, ...] sorted by score desc
+
+fuzzy.filter("ab", users, { key: u => u.name, limit: 10 });
+
+// Pre-split target into matched/non-matched runs for JSX <mark> highlighting
+fuzzy.segments("userDashboard", [[0,1], [4,5], [7,8]]);
+// [{ text: "u", match: true }, { text: "ser", match: false },
+//  { text: "D", match: true }, { text: "as",  match: false },
+//  { text: "h", match: true }, { text: "board", match: false }]
+
+// ─── Levenshtein (typo-tolerant lookups) ────────────────────────────────
+
+fuzzy.distance("color", "colour");                          // 1
+fuzzy.distance("kitten", "sitting");                        // 3
+
+fuzzy.closest("hellp", ["hello", "help", "world"]);
+// { value: "hello", distance: 1, similarity: 0.8 }
+
+fuzzy.closest("zzz", ["alpha", "beta"], { maxDistance: 2 }); // null
+```
+
+The `match` algorithm uses a fzf-inspired scoring heuristic that rewards
+prefix matches, word boundaries (kebab/snake/space/dot/camelCase), contiguous
+runs, and case agreement. Score values are raw and only comparable within a
+single query — use them for sorting, not for cross-query thresholds.
 
 ## searchParams
 

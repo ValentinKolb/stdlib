@@ -24,7 +24,7 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, password, dates, timing, streaming, text, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
 import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
@@ -575,6 +575,77 @@ text.pascalCase("hello_world");    // "HelloWorld"
 - `truncate` counts the `"..."` marker towards the limit. If `limit` < 4, returns the raw truncation without a marker.
 - `summarize` breaks at the last space before the limit, so the result may be shorter than `limit`.
 - Case conversion functions split on hyphens, underscores, spaces, and camelCase boundaries.
+
+---
+
+## fuzzy
+
+Subsequence fuzzy match for UI search (command palette, list filters) and
+Levenshtein edit distance for "did you mean?" lookups. Case-insensitive by
+default; pass `caseSensitive: true` to opt into strict matching.
+
+### API
+
+```ts
+type FuzzyMatch = {
+  score: number;                                       // raw, sort within a query only
+  ranges: ReadonlyArray<readonly [number, number]>;    // [start, endExclusive] in target
+};
+
+type FuzzyHit<T> = FuzzyMatch & { item: T; target: string };
+type ClosestMatch = { value: string; distance: number; similarity: number };
+type FuzzySegment = { text: string; match: boolean };
+
+fuzzy.match(query: string, target: string, opts?: { caseSensitive?: boolean }): FuzzyMatch | null
+
+fuzzy.filter<T>(
+  query: string,
+  items: readonly T[],
+  opts?: { key?: (item: T) => string; limit?: number; caseSensitive?: boolean },
+): Array<FuzzyHit<T>>
+
+fuzzy.segments(target: string, ranges: ReadonlyArray<readonly [number, number]>): FuzzySegment[]
+
+fuzzy.distance(a: string, b: string): number  // Levenshtein, case-sensitive
+
+fuzzy.closest(
+  query: string,
+  choices: readonly string[],
+  opts?: { maxDistance?: number; caseSensitive?: boolean },
+): ClosestMatch | null
+```
+
+### Examples
+
+```ts
+import { fuzzy } from "@valentinkolb/stdlib";
+
+// UI command palette
+fuzzy.match("udh", "userDashboard");
+// { score: 78, ranges: [[0,1], [4,5], [7,8]] }
+
+fuzzy.filter("udh", ["userDashboard", "logout", "userHome"]);
+// → sorted hits with score + ranges
+
+fuzzy.filter("ab", users, { key: u => u.name, limit: 10 });
+
+// Highlight matched substrings in JSX (SolidJS example)
+const segs = fuzzy.segments(hit.target, hit.ranges);
+// segs.map(s => s.match ? <mark>{s.text}</mark> : s.text)
+
+// "Did you mean?"
+fuzzy.distance("color", "colour");  // 1
+fuzzy.closest("hellp", ["hello", "help"]);
+// { value: "hello", distance: 1, similarity: 0.8 }
+```
+
+**Gotchas:**
+- `fuzzy.match` returns `null` when `query` is not a subsequence of `target`. Empty queries return `{ score: 0, ranges: [] }` (a no-op match) — useful so `filter` returns all items unfiltered.
+- The `score` is raw and only meaningful within a single query (e.g. for sorting). Don't compare scores across different queries or use absolute thresholds.
+- Word boundaries are detected for kebab/snake/space/dot separators and lower→Upper camelCase transitions. Non-ASCII characters are treated as word chars (no boundary detection beyond ASCII).
+- `fuzzy.distance` is case-sensitive (lowercase manually for case-insensitive distance). `fuzzy.closest` is case-insensitive by default but preserves the original casing in the returned `value`.
+- The match algorithm is 2D dynamic programming — optimal, not greedy. Worst case O(Q·T) per match; subsequence pre-check rejects non-matches in O(T) before the DP runs. Suitable for live filtering of 10k+ items.
+- `fuzzy.segments` expects sorted, non-overlapping ranges (the canonical shape produced by `match`/`filter`). Pass other shapes at your own risk.
 
 ---
 
