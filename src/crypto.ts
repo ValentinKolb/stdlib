@@ -83,10 +83,14 @@ const generateKey = (length: number = 32): string => {
  * Returns a cryptographically secure random integer in [0, max).
  * Uses rejection sampling to eliminate modulo bias.
  *
- * @param max - Exclusive upper bound (returns 0 when max <= 1)
+ * @param max - Exclusive integer upper bound (returns 0 when max <= 1)
+ * @throws RangeError when max > 1 is not a finite integer or is greater than 2^32
  */
 export const randomIndex = (max: number): number => {
   if (max <= 1) return 0;
+  if (!Number.isFinite(max) || !Number.isInteger(max) || max > 0x100000000) {
+    throw new RangeError("max must be a finite integer less than or equal to 2^32");
+  }
   const ceiling = Math.floor(0x100000000 / max) * max;
   const buffer = new Uint32Array(1);
 

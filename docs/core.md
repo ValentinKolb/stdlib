@@ -105,13 +105,13 @@ password.pin({ length: 4 });                          // "2847"
 
 // Strength analysis
 password.strength("correct-horse-battery-staple");
-// { entropy: 41.36, score: 3, label: "strong", crackTime: "centuries", feedback: [] }
+// { entropy: 41.36, score: 2, label: "fair", crackTime: "5 minutes", feedback: ["Use more random words"] }
 
 password.strength("password123");
 // { entropy: 12.7, score: 1, label: "weak", crackTime: "seconds", feedback: ["Add more characters", ...] }
 ```
 
-The memorable generator uses the EFF Short Wordlist 1 (1,296 words, 10.34 bits/word).
+The memorable generator uses the EFF Short Wordlist 1 (1,296 words, 10.34 bits/word). Four random words are easy to type; use six or more words when offline cracking resistance matters.
 
 ## dates
 

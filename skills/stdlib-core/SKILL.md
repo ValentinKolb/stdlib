@@ -254,7 +254,7 @@ password.pin({ length: 8 });                          // "38472916"
 
 // Strength analysis
 const strong = password.strength("correct-horse-battery-staple");
-// { entropy: 41.36, score: 3, label: "strong", crackTime: "centuries", feedback: [] }
+// { entropy: 41.36, score: 2, label: "fair", crackTime: "5 minutes", feedback: ["Use more random words"] }
 
 const weak = password.strength("password123");
 // { entropy: 12.7, score: 1, label: "weak", crackTime: "seconds", feedback: ["Add more characters", ...] }
@@ -262,6 +262,7 @@ const weak = password.strength("password123");
 
 **Gotchas:**
 - The memorable generator uses the EFF Short Wordlist 1 (1,296 words, 10.34 bits/word).
+- Four random words are easy to type; use six or more words when offline cracking resistance matters.
 - `strength` is a pure synchronous function -- no crypto calls involved.
 - `random` and `pin` use `crypto.getRandomValues` (cryptographically secure).
 

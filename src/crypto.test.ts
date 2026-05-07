@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { common, symmetric, asymmetric, totp } from "./crypto";
+import { common, randomIndex, symmetric, asymmetric, totp } from "./crypto";
 
 // ==========================
 // common.hash
@@ -112,6 +112,43 @@ describe("common.generateKey", () => {
 
   it("contains only hex characters", () => {
     expect(/^[0-9a-f]+$/.test(common.generateKey())).toBe(true);
+  });
+});
+
+// ==========================
+// randomIndex
+// ==========================
+
+describe("randomIndex", () => {
+  it("returns 0 for max <= 1", () => {
+    expect(randomIndex(1)).toBe(0);
+    expect(randomIndex(0)).toBe(0);
+    expect(randomIndex(-1)).toBe(0);
+  });
+
+  it("rejects invalid bounds", () => {
+    expect(() => randomIndex(Number.NaN)).toThrow(RangeError);
+    expect(() => randomIndex(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+    expect(() => randomIndex(1.5)).toThrow(RangeError);
+    expect(() => randomIndex(0x100000000 + 1)).toThrow(RangeError);
+  });
+
+  it("retries rejected values to avoid modulo bias", () => {
+    const originalGetRandomValues = globalThis.crypto.getRandomValues;
+    const values = [0xffffffff, 4];
+    let calls = 0;
+
+    globalThis.crypto.getRandomValues = ((array: Uint32Array) => {
+      array[0] = values[calls++]!;
+      return array;
+    }) as Crypto["getRandomValues"];
+
+    try {
+      expect(randomIndex(3)).toBe(1);
+      expect(calls).toBe(2);
+    } finally {
+      globalThis.crypto.getRandomValues = originalGetRandomValues;
+    }
   });
 });
 

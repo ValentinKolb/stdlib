@@ -5,6 +5,7 @@ const PASSWORD_UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const PASSWORD_LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
 const PASSWORD_DIGITS = "0123456789";
 const PASSWORD_SYMBOLS = "!@#$%^&*()-_=+[]{}<>?";
+const PASSWORD_WORD_SET = new Set(PASSWORD_WORDS);
 
 export type PasswordStrength = {
   /** Estimated entropy in bits */
@@ -58,22 +59,6 @@ const randomPickWord = (): string => {
 };
 
 /**
- * Returns a new array with elements in cryptographically random order.
- * Uses the Fisher-Yates shuffle with secure random indices.
- * Does NOT mutate the original array.
- *
- * @param items - Array to shuffle
- */
-const secureShuffle = <T>(items: T[]): T[] => {
-  const next = [...items];
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = randomIndex(i + 1);
-    [next[i], next[j]] = [next[j]!, next[i]!];
-  }
-  return next;
-};
-
-/**
  * Inserts `value` at a random position in `parts`.
  * WARNING: MUTATES the input array in place.
  *
@@ -85,9 +70,18 @@ const insertPartAtRandomPosition = (parts: string[], value: string): void => {
 };
 
 /**
- * Clamps `value` to the inclusive range [min, max].
+ * Floors and clamps finite numbers, falling back for NaN and infinities.
  */
-const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
+const boundedInt = (value: number | undefined, fallback: number, min: number, max: number): number => {
+  const next = value ?? fallback;
+  if (!Number.isFinite(next)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(next)));
+};
+
+/**
+ * Returns true when `chars` contains at least one character from `pool`.
+ */
+const hasCharFromPool = (chars: readonly string[], pool: string): boolean => chars.some((char) => pool.includes(char));
 
 /**
  * Generates a random password from configurable character pools.
@@ -100,7 +94,7 @@ const clamp = (value: number, min: number, max: number): number => Math.min(max,
  * generateRandomPassword({ length: 32, symbols: true });
  */
 const generateRandomPassword = (options: RandomPasswordOptions = {}): string => {
-  const length = clamp(Math.floor(options.length ?? 20), 4, 64);
+  const length = boundedInt(options.length, 20, 4, 64);
   const uppercase = options.uppercase ?? true;
   const numbers = options.numbers ?? true;
   const symbols = options.symbols ?? false;
@@ -110,17 +104,12 @@ const generateRandomPassword = (options: RandomPasswordOptions = {}): string => 
   if (symbols) pools.push(PASSWORD_SYMBOLS);
 
   const allChars = pools.join("");
-  const required: string[] = [randomPick(PASSWORD_LOWERCASE)];
-  if (uppercase) required.push(randomPick(PASSWORD_UPPERCASE));
-  if (numbers) required.push(randomPick(PASSWORD_DIGITS));
-  if (symbols) required.push(randomPick(PASSWORD_SYMBOLS));
+  let chars: string[];
+  do {
+    chars = Array.from({ length }, () => randomPick(allChars));
+  } while (!pools.every((pool) => hasCharFromPool(chars, pool)));
 
-  const chars = [...required];
-  while (chars.length < length) {
-    chars.push(randomPick(allChars));
-  }
-
-  return secureShuffle(chars).join("");
+  return chars.join("");
 };
 
 /**
@@ -148,7 +137,7 @@ const transformMemorableWord = (word: string, options: Required<Pick<MemorablePa
  * generateMemorablePassword({ capitalize: true, addNumber: true }); // "Correct-Horse-7-Battery-Staple"
  */
 const generateMemorablePassword = (options: MemorablePasswordOptions = {}): string => {
-  const words = clamp(Math.floor(options.words ?? 4), 3, 10);
+  const words = boundedInt(options.words, 4, 3, 10);
   const capitalize = options.capitalize ?? false;
   const fullWords = options.fullWords ?? true;
   const separator = options.separator ?? "-";
@@ -169,7 +158,7 @@ const generateMemorablePassword = (options: MemorablePasswordOptions = {}): stri
  * @example generatePin(); // "384729"
  */
 const generatePin = (options: PinPasswordOptions = {}): string => {
-  const length = clamp(Math.floor(options.length ?? 6), 3, 12);
+  const length = boundedInt(options.length, 6, 3, 12);
   return Array.from({ length }, () => randomPick(PASSWORD_DIGITS)).join("");
 };
 
@@ -213,6 +202,36 @@ const COMMON_PATTERNS = [
   "1qaz2wsx",
   "zaq1xsw2",
 ];
+
+type PassphraseEntropyEstimate = {
+  entropy: number;
+  wordCount: number;
+};
+
+/**
+ * Estimates diceware-style passphrases from separator-delimited words.
+ */
+const estimatePassphraseEntropy = (pw: string): PassphraseEntropyEstimate | undefined => {
+  if (!/[^a-z0-9]/i.test(pw)) return undefined;
+
+  const parts = pw.split(/[^a-z0-9]+/i).filter(Boolean);
+  const words = parts.filter((part) => /^[A-Z]?[a-z]{2,}$/.test(part));
+  const extras = parts.length - words.length;
+  if (words.length < 3) return undefined;
+  if (extras > 0 && !parts.every((part) => /^[A-Z]?[a-z]{2,}$/.test(part) || /^\d$/.test(part))) return undefined;
+
+  const normalizedWords = words.map((word) => word.toLowerCase());
+  const knownWords = normalizedWords.filter((word) => PASSWORD_WORD_SET.has(word)).length;
+  const knownWordRatio = knownWords / words.length;
+  const uniqueWordRatio = new Set(normalizedWords).size / words.length;
+
+  let entropy = words.length * Math.log2(PASSWORD_WORDS.length);
+  entropy += extras * Math.log2(10);
+  if (knownWords > 0 && knownWordRatio < 1) entropy *= Math.max(0.5, knownWordRatio);
+  if (uniqueWordRatio < 1) entropy *= Math.max(0.25, uniqueWordRatio);
+
+  return { entropy, wordCount: words.length };
+};
 
 /**
  * Counts occurrences of sequential character runs (ascending or descending)
@@ -310,6 +329,10 @@ const checkPasswordStrength = (pw: string): PasswordStrength => {
 
   // Base entropy
   let entropy = pw.length * Math.log2(poolSize);
+  const passphraseEntropy = estimatePassphraseEntropy(pw);
+  if (passphraseEntropy) {
+    entropy = Math.min(entropy, passphraseEntropy.entropy);
+  }
 
   // Count active classes
   const classCount = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
@@ -344,9 +367,13 @@ const checkPasswordStrength = (pw: string): PasswordStrength => {
 
   // Feedback messages
   if (pw.length < 12) feedback.push("Use at least 12 characters");
-  if (!hasUpper) feedback.push("Add uppercase letters");
-  if (!hasDigit) feedback.push("Add numbers");
-  if (!hasSymbol) feedback.push("Add symbols (!@#$%...)");
+  if (passphraseEntropy) {
+    if (passphraseEntropy.wordCount < 6) feedback.push("Use more random words");
+  } else {
+    if (!hasUpper) feedback.push("Add uppercase letters");
+    if (!hasDigit) feedback.push("Add numbers");
+    if (!hasSymbol) feedback.push("Add symbols (!@#$%...)");
+  }
   if (seqCount > 0) feedback.push("Avoid sequential patterns (abc, 123)");
   if (repCount > 0) feedback.push("Avoid repeated characters");
 

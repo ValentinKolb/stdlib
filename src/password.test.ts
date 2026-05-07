@@ -11,25 +11,14 @@ describe("password.random", () => {
   });
 
   it("contains lowercase, uppercase, and digits by default", () => {
-    // Run multiple times to reduce flakiness
-    for (let i = 0; i < 5; i++) {
-      const pw = password.random();
-      expect(/[a-z]/.test(pw)).toBe(true);
-      expect(/[A-Z]/.test(pw)).toBe(true);
-      expect(/[0-9]/.test(pw)).toBe(true);
-    }
+    const pw = password.random();
+    expect(/[a-z]/.test(pw)).toBe(true);
+    expect(/[A-Z]/.test(pw)).toBe(true);
+    expect(/[0-9]/.test(pw)).toBe(true);
   });
 
   it("includes symbols when requested", () => {
-    // Run multiple times
-    let hasSymbol = false;
-    for (let i = 0; i < 10; i++) {
-      if (/[!@#$%^&*()\-_=+\[\]{}<>?]/.test(password.random({ symbols: true }))) {
-        hasSymbol = true;
-        break;
-      }
-    }
-    expect(hasSymbol).toBe(true);
+    expect(/[!@#$%^&*()\-_=+\[\]{}<>?]/.test(password.random({ symbols: true }))).toBe(true);
   });
 
   it("respects custom length", () => {
@@ -42,6 +31,11 @@ describe("password.random", () => {
 
   it("clamps length to maximum 64", () => {
     expect(password.random({ length: 100 }).length).toBe(64);
+  });
+
+  it("falls back to default length for non-finite values", () => {
+    expect(password.random({ length: Number.NaN }).length).toBe(20);
+    expect(password.random({ length: Number.POSITIVE_INFINITY }).length).toBe(20);
   });
 
   it("excludes uppercase when disabled", () => {
@@ -66,6 +60,11 @@ describe("password.memorable", () => {
 
   it("clamps word count to minimum 3", () => {
     expect(password.memorable({ words: 1 }).split("-").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("falls back to default word count for non-finite values", () => {
+    expect(password.memorable({ words: Number.NaN }).split("-").length).toBe(4);
+    expect(password.memorable({ words: Number.POSITIVE_INFINITY }).split("-").length).toBe(4);
   });
 
   it("uses custom separator", () => {
@@ -125,6 +124,11 @@ describe("password.pin", () => {
   it("clamps to 3-12", () => {
     expect(password.pin({ length: 1 }).length).toBe(3);
     expect(password.pin({ length: 20 }).length).toBe(12);
+  });
+
+  it("falls back to default length for non-finite values", () => {
+    expect(password.pin({ length: Number.NaN }).length).toBe(6);
+    expect(password.pin({ length: Number.POSITIVE_INFINITY }).length).toBe(6);
   });
 
   it("contains only digits", () => {
@@ -197,5 +201,13 @@ describe("password.strength", () => {
     const pw = password.memorable({ words: 6 });
     const s = password.strength(pw);
     expect(s.score).toBeGreaterThanOrEqual(2);
+  });
+
+  it("estimates separator-delimited passphrases as word choices", () => {
+    const s = password.strength("correct-horse-battery-staple");
+    expect(s.entropy).toBeCloseTo(41.36, 2);
+    expect(s.score).toBe(2);
+    expect(s.crackTime).toBe("5 minutes");
+    expect(s.feedback).toContain("Use more random words");
   });
 });
