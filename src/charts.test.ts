@@ -7,6 +7,8 @@ import {
   pie,
   donut,
   sparkline,
+  histogram,
+  boxplot,
   // helpers
   escapeXml,
   normalizePadding,
@@ -14,9 +16,16 @@ import {
   niceStep,
   extendDomainToNice,
   mapRange,
+  mapLog,
+  niceLogTicks,
   linePathD,
   smoothPathD,
+  stepPathD,
   arcPathD,
+  markerPath,
+  linearRegression,
+  computeBoxStats,
+  autoBin,
   svgRoot,
 } from "./charts";
 
@@ -957,16 +966,1056 @@ describe("charts.sparkline", () => {
 });
 
 // =====================================================================
+// title + subtitle (header)
+// =====================================================================
+
+describe("charts header (title + subtitle)", () => {
+  it("renders title text when title is provided", () => {
+    const svg = bar({ data: [{ label: "A", value: 1 }], title: "Q4 Revenue" });
+    expect(svg).toContain('<text class="stdlib-chart-title"');
+    expect(svg).toContain(">Q4 Revenue<");
+  });
+
+  it("renders subtitle text when subtitle is provided", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+      subtitle: "in EUR",
+    });
+    expect(svg).toContain('<text class="stdlib-chart-subtitle"');
+    expect(svg).toContain(">in EUR<");
+  });
+
+  it("renders both with title above subtitle", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 1 }],
+      title: "Top",
+      subtitle: "Bottom",
+    });
+    const titleY = /<text class="stdlib-chart-title"[^>]*y="([0-9.]+)"/.exec(svg);
+    const subY = /<text class="stdlib-chart-subtitle"[^>]*y="([0-9.]+)"/.exec(svg);
+    expect(titleY).not.toBeNull();
+    expect(subY).not.toBeNull();
+    expect(parseFloat(titleY![1]!)).toBeLessThan(parseFloat(subY![1]!));
+  });
+
+  it("does not render header elements when neither prop given", () => {
+    const svg = bar({ data: [{ label: "A", value: 1 }] });
+    expect(svg).not.toContain('<text class="stdlib-chart-title"');
+    expect(svg).not.toContain('<text class="stdlib-chart-subtitle"');
+  });
+
+  it("XML-escapes title and subtitle", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 1 }],
+      title: '<script>alert("x")</script>',
+      subtitle: "& others",
+    });
+    expect(svg).not.toContain("<script>alert");
+    expect(svg).toContain("&lt;script&gt;");
+    expect(svg).toContain("&amp; others");
+  });
+
+  it("works on scatter, line, bar, pie, donut", () => {
+    expect(scatter({ series: [{ data: [{ x: 0, y: 0 }] }], title: "S" })).toContain(">S<");
+    expect(line({ series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }], title: "L" })).toContain(">L<");
+    expect(bar({ data: [{ label: "x", value: 1 }], title: "B" })).toContain(">B<");
+    expect(pie({ data: [{ label: "A", value: 1 }], title: "P" })).toContain(">P<");
+    expect(donut({ data: [{ label: "A", value: 1 }], title: "D" })).toContain(">D<");
+  });
+
+  it("shifts plot content down to make room for header", () => {
+    const without = bar({ data: [{ label: "A", value: 10 }] });
+    const withHeader = bar({ data: [{ label: "A", value: 10 }], title: "Title" });
+    const rectWithout = /<rect class="stdlib-chart-bar[^"]*" [^>]*y="([0-9.]+)"/.exec(without);
+    const rectWith = /<rect class="stdlib-chart-bar[^"]*" [^>]*y="([0-9.]+)"/.exec(withHeader);
+    expect(rectWithout).not.toBeNull();
+    expect(rectWith).not.toBeNull();
+    expect(parseFloat(rectWith![1]!)).toBeGreaterThan(parseFloat(rectWithout![1]!));
+  });
+
+  it("pie center shifts down to accommodate header", () => {
+    // Both should render full circles. Compare the M command's y coord (start
+    // of the first arc) — with header it should be lower (larger y).
+    const a = pie({ data: [{ label: "All", value: 1 }] });
+    const b = pie({ data: [{ label: "All", value: 1 }], title: "T" });
+    const yA = parseFloat(/<path class="stdlib-chart-slice[^"]*" d="M [0-9.]+ ([0-9.]+)/.exec(a)![1]!);
+    const yB = parseFloat(/<path class="stdlib-chart-slice[^"]*" d="M [0-9.]+ ([0-9.]+)/.exec(b)![1]!);
+    expect(yB).toBeGreaterThan(yA);
+  });
+});
+
+// =====================================================================
+// reference lines
+// =====================================================================
+
+describe("charts reference lines", () => {
+  it("renders a horizontal reference line for axis: y (default)", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 50 }],
+    });
+    expect(svg).toContain('<line class="stdlib-chart-reference"');
+  });
+
+  it("default axis is y", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 50 }],
+    });
+    // Horizontal: y1 == y2 in the line attribute.
+    const ref = /<line class="stdlib-chart-reference" x1="([0-9.]+)" y1="([0-9.]+)" x2="([0-9.]+)" y2="([0-9.]+)"\/>/.exec(svg);
+    expect(ref).not.toBeNull();
+    expect(ref![2]).toBe(ref![4]);
+  });
+
+  it("renders a vertical reference line for axis: x", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 5, axis: "x" }],
+    });
+    const ref = /<line class="stdlib-chart-reference" x1="([0-9.]+)" y1="([0-9.]+)" x2="([0-9.]+)" y2="([0-9.]+)"\/>/.exec(svg);
+    expect(ref).not.toBeNull();
+    expect(ref![1]).toBe(ref![3]);
+  });
+
+  it("renders a label when provided", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 50, label: "Target" }],
+    });
+    expect(svg).toContain('<text class="stdlib-chart-reference-label"');
+    expect(svg).toContain(">Target<");
+  });
+
+  it("skips reference lines outside the y-domain", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 9999 }],
+    });
+    expect(svg).not.toContain('<line class="stdlib-chart-reference"');
+  });
+
+  it("skips reference lines outside the x-domain", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 9999, axis: "x" }],
+    });
+    expect(svg).not.toContain('<line class="stdlib-chart-reference"');
+  });
+
+  it("renders multiple references", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 30 }, { value: 70 }],
+    });
+    expect(count(svg, '<line class="stdlib-chart-reference"')).toBe(2);
+  });
+
+  it("works on scatter", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 10, y: 100 }] }],
+      references: [{ value: 50 }],
+    });
+    expect(svg).toContain('<line class="stdlib-chart-reference"');
+  });
+
+  it("works on bar (y-axis only)", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 100 }, { label: "B", value: 200 }],
+      references: [{ value: 150, label: "Target" }],
+    });
+    expect(svg).toContain('<line class="stdlib-chart-reference"');
+    expect(svg).toContain(">Target<");
+  });
+
+  it("ignores x-axis references on bar (x is categorical)", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 100 }],
+      references: [{ value: 5, axis: "x" }],
+    });
+    expect(svg).not.toContain('<line class="stdlib-chart-reference"');
+  });
+
+  it("XML-escapes reference label", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 10 }] }],
+      references: [{ value: 5, label: '<img onerror="x">' }],
+    });
+    expect(svg).not.toContain("<img onerror");
+    expect(svg).toContain("&lt;img");
+  });
+
+  it("filters non-finite reference values", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 10 }] }],
+      references: [{ value: NaN }, { value: Infinity }, { value: 5, label: "OK" }],
+    });
+    expect(count(svg, '<line class="stdlib-chart-reference"')).toBe(1);
+    expect(svg).toContain(">OK<");
+  });
+});
+
+// =====================================================================
+// sparkline showMinMax
+// =====================================================================
+
+describe("charts.sparkline — showMinMax", () => {
+  it("renders both min and max dots when showMinMax: true", () => {
+    const svg = sparkline({ data: [3, 7, 2, 9, 5, 12, 8], showMinMax: true });
+    expect(svg).toContain('<circle class="stdlib-chart-sparkline-max"');
+    expect(svg).toContain('<circle class="stdlib-chart-sparkline-min"');
+  });
+
+  it("does not render min/max dots by default", () => {
+    const svg = sparkline({ data: [1, 2, 3] });
+    expect(svg).not.toContain('<circle class="stdlib-chart-sparkline-max"');
+    expect(svg).not.toContain('<circle class="stdlib-chart-sparkline-min"');
+  });
+
+  it("skips dots when all values are equal", () => {
+    const svg = sparkline({ data: [5, 5, 5, 5], showMinMax: true });
+    expect(svg).not.toContain('<circle class="stdlib-chart-sparkline-max"');
+    expect(svg).not.toContain('<circle class="stdlib-chart-sparkline-min"');
+  });
+
+  it("combines with showLast (all three render)", () => {
+    const svg = sparkline({ data: [3, 7, 2, 9], showMinMax: true, showLast: true });
+    expect(svg).toContain('<circle class="stdlib-chart-sparkline-max"');
+    expect(svg).toContain('<circle class="stdlib-chart-sparkline-min"');
+    expect(svg).toContain('<circle class="stdlib-chart-sparkline-last"');
+  });
+
+  it("max dot positions over the highest value", () => {
+    // Data: max is at index 3 (value 9). x-pixel at index 3 with width 80,
+    // 1.5 inset → mapRange(3, [0,4], [1.5, 78.5]) ≈ 59.4.
+    const svg = sparkline({ data: [1, 2, 3, 9, 4], showMinMax: true });
+    const max = /<circle class="stdlib-chart-sparkline-max" cx="([0-9.]+)"/.exec(svg);
+    expect(max).not.toBeNull();
+    expect(parseFloat(max![1]!)).toBeGreaterThan(40);
+    expect(parseFloat(max![1]!)).toBeLessThan(70);
+  });
+});
+
+// =====================================================================
+// bar showValues
+// =====================================================================
+
+describe("charts.bar — showValues", () => {
+  it("renders one value text per bar when showValues: true", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 10 }, { label: "B", value: 20 }],
+      showValues: true,
+    });
+    expect(count(svg, '<text class="stdlib-chart-bar-value"')).toBe(2);
+  });
+
+  it("does not render value text by default", () => {
+    const svg = bar({ data: [{ label: "A", value: 10 }] });
+    expect(svg).not.toContain('<text class="stdlib-chart-bar-value"');
+  });
+
+  it("uses yAxis.format for value text when provided", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 100 }],
+      showValues: true,
+      yAxis: { format: (v) => `${v}%` },
+    });
+    expect(svg).toContain(">100%<");
+  });
+
+  it("places value above bar for positive values", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 100 }],
+      showValues: true,
+    });
+    const rect = /<rect class="stdlib-chart-bar[^"]*" [^>]*y="([0-9.]+)"/.exec(svg);
+    const text = /<text class="stdlib-chart-bar-value" [^>]*y="([0-9.]+)"/.exec(svg);
+    expect(rect).not.toBeNull();
+    expect(text).not.toBeNull();
+    // Text y should be smaller than rect y (above).
+    expect(parseFloat(text![1]!)).toBeLessThan(parseFloat(rect![1]!));
+  });
+
+  it("places value below bar for negative values", () => {
+    const svg = bar({
+      data: [{ label: "A", value: -50 }],
+      showValues: true,
+    });
+    const rect = /<rect class="stdlib-chart-bar[^"]*" [^>]*y="([0-9.]+)" width="[0-9.]+" height="([0-9.]+)"/.exec(svg);
+    const text = /<text class="stdlib-chart-bar-value" [^>]*y="([0-9.]+)"/.exec(svg);
+    expect(rect).not.toBeNull();
+    expect(text).not.toBeNull();
+    const rectBottom = parseFloat(rect![1]!) + parseFloat(rect![2]!);
+    expect(parseFloat(text![1]!)).toBeGreaterThan(rectBottom);
+  });
+
+  it("XML-escapes formatted value", () => {
+    const svg = bar({
+      data: [{ label: "A", value: 1 }],
+      showValues: true,
+      yAxis: { format: () => '<x>' },
+    });
+    expect(svg).not.toContain("<x>");
+    expect(svg).toContain("&lt;x&gt;");
+  });
+});
+
+// =====================================================================
+// line area
+// =====================================================================
+
+describe("charts.line — area", () => {
+  it("emits area path in addition to line path when area: true", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 5 }, { x: 2, y: 3 }] }],
+      area: true,
+    });
+    expect(svg).toContain('<path class="stdlib-chart-area');
+    expect(svg).toContain('<path class="stdlib-chart-line');
+  });
+
+  it("does not emit area path by default", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 5 }] }],
+    });
+    expect(svg).not.toContain('<path class="stdlib-chart-area');
+  });
+
+  it("area path is closed with Z", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 5 }, { x: 2, y: 3 }] }],
+      area: true,
+    });
+    const areaPath = /<path class="stdlib-chart-area[^"]*" d="([^"]+)"/.exec(svg);
+    expect(areaPath).not.toBeNull();
+    expect(areaPath![1]).toMatch(/Z\s*$/);
+  });
+
+  it("renders one area + one line per series for multi-series", () => {
+    const svg = line({
+      series: [
+        { data: [{ x: 0, y: 0 }, { x: 1, y: 5 }] },
+        { data: [{ x: 0, y: 1 }, { x: 1, y: 3 }] },
+      ],
+      area: true,
+    });
+    expect(count(svg, '<path class="stdlib-chart-area')).toBe(2);
+    expect(count(svg, '<path class="stdlib-chart-line')).toBe(2);
+  });
+
+  it("works with smooth: true (area path uses C commands)", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 5 }, { x: 2, y: 3 }] }],
+      area: true,
+      smooth: true,
+    });
+    const areaPath = /<path class="stdlib-chart-area[^"]*" d="([^"]+)"/.exec(svg);
+    expect(areaPath).not.toBeNull();
+    expect(areaPath![1]!).toContain(" C ");
+  });
+
+  it("each area path uses cyclic series classes", () => {
+    const svg = line({
+      series: [
+        { data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+      ],
+      area: true,
+    });
+    expect(svg).toContain('stdlib-chart-area stdlib-chart-series-0');
+    expect(svg).toContain('stdlib-chart-area stdlib-chart-series-1');
+  });
+});
+
+// =====================================================================
+// legend
+// =====================================================================
+
+describe("charts legend", () => {
+  it("renders a legend group when legend: true on multi-series line", () => {
+    const svg = line({
+      series: [
+        { label: "A", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { label: "B", data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain('<g class="stdlib-chart-legend">');
+    expect(svg).toContain(">A<");
+    expect(svg).toContain(">B<");
+  });
+
+  it("renders a swatch + label per entry", () => {
+    const svg = line({
+      series: [
+        { label: "A", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { label: "B", data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+      ],
+      legend: true,
+    });
+    expect(count(svg, '<rect class="stdlib-chart-legend-swatch"')).toBe(2);
+    expect(count(svg, '<text class="stdlib-chart-legend-label"')).toBe(2);
+  });
+
+  it("falls back to 'Series N' when no label is set", () => {
+    const svg = line({
+      series: [
+        { data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain(">Series 1<");
+    expect(svg).toContain(">Series 2<");
+  });
+
+  it("does not render legend by default", () => {
+    const svg = line({
+      series: [
+        { label: "A", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+      ],
+    });
+    expect(svg).not.toContain('<g class="stdlib-chart-legend">');
+  });
+
+  it("works on scatter", () => {
+    const svg = scatter({
+      series: [
+        { label: "Group A", data: [{ x: 0, y: 0 }] },
+        { label: "Group B", data: [{ x: 1, y: 1 }] },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain('<g class="stdlib-chart-legend">');
+    expect(svg).toContain(">Group A<");
+  });
+
+  it("works on bar with colorByBar: true", () => {
+    const svg = bar({
+      data: [
+        { label: "Q1", value: 10 },
+        { label: "Q2", value: 20 },
+      ],
+      colorByBar: true,
+      legend: true,
+    });
+    expect(svg).toContain('<g class="stdlib-chart-legend">');
+    expect(svg).toContain(">Q1<");
+    expect(svg).toContain(">Q2<");
+  });
+
+  it("skips legend on bar without colorByBar (single color, redundant)", () => {
+    const svg = bar({
+      data: [{ label: "Q1", value: 10 }],
+      legend: true,
+    });
+    expect(svg).not.toContain('<g class="stdlib-chart-legend">');
+  });
+
+  it("legend entries use cyclic series classes", () => {
+    const svg = line({
+      series: [
+        { label: "A", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { label: "B", data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+        { label: "C", data: [{ x: 0, y: 2 }, { x: 1, y: 3 }] },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain('stdlib-chart-legend-item stdlib-chart-series-0');
+    expect(svg).toContain('stdlib-chart-legend-item stdlib-chart-series-1');
+    expect(svg).toContain('stdlib-chart-legend-item stdlib-chart-series-2');
+  });
+
+  it("XML-escapes legend labels", () => {
+    const svg = line({
+      series: [{ label: '<x>', data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+      legend: true,
+    });
+    expect(svg).not.toContain(">x>"); // would only appear if unescaped
+    expect(svg).toContain("&lt;x&gt;");
+  });
+
+  it("plot area shrinks vertically to make room for legend", () => {
+    const a = line({
+      series: [{ label: "S", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+    });
+    const b = line({
+      series: [{ label: "S", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+      legend: true,
+    });
+    // The x-axis line position approximates the bottom of the plot area.
+    // Match the *first* axis line (the y-axis is rendered first as a vertical line; the x-axis is the next one; we'll just count y2 of any axis line and look for the lowest y in each).
+    const axisYs = (svg: string): number[] => {
+      const out: number[] = [];
+      const re = /<line class="stdlib-chart-axis"[^>]*y2="([0-9.]+)"/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(svg))) out.push(parseFloat(m[1]!));
+      return out;
+    };
+    const aMax = Math.max(...axisYs(a));
+    const bMax = Math.max(...axisYs(b));
+    expect(bMax).toBeLessThan(aMax);
+  });
+});
+
+// =====================================================================
 // namespace
 // =====================================================================
 
 describe("charts namespace", () => {
-  it("exposes all six chart functions", () => {
+  it("exposes all eight chart functions", () => {
     expect(charts.scatter).toBe(scatter);
     expect(charts.line).toBe(line);
     expect(charts.bar).toBe(bar);
     expect(charts.pie).toBe(pie);
     expect(charts.donut).toBe(donut);
     expect(charts.sparkline).toBe(sparkline);
+    expect(charts.histogram).toBe(histogram);
+    expect(charts.boxplot).toBe(boxplot);
+  });
+});
+
+// =====================================================================
+// v0.7 — markers
+// =====================================================================
+
+describe("markerPath", () => {
+  it("generates a path for each shape", () => {
+    for (const shape of ["circle", "square", "triangle", "diamond", "plus", "cross"] as const) {
+      const d = markerPath(shape, 50, 50, 5);
+      expect(d).toMatch(/^M /);
+      expect(d.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("circle path uses arc commands", () => {
+    expect(markerPath("circle", 50, 50, 5)).toContain(" A ");
+  });
+
+  it("polygon shapes use line commands and close with Z", () => {
+    for (const shape of ["square", "triangle", "diamond", "plus", "cross"] as const) {
+      expect(markerPath(shape, 0, 0, 4)).toMatch(/Z\s*$/);
+    }
+  });
+});
+
+describe("charts.scatter — markers", () => {
+  it("renders <circle> by default", () => {
+    const svg = scatter({ series: [{ data: [{ x: 0, y: 0 }] }] });
+    expect(svg).toContain("<circle");
+  });
+
+  it("renders <path> for non-circle markers", () => {
+    const svg = scatter({
+      series: [{ marker: "square", data: [{ x: 0, y: 0 }] }],
+    });
+    expect(svg).toContain('<path class="stdlib-chart-point"');
+  });
+
+  it("autoVariant cycles markers per series", () => {
+    const svg = scatter({
+      series: [
+        { data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+        { data: [{ x: 0, y: 2 }, { x: 1, y: 3 }] },
+      ],
+      autoVariant: true,
+    });
+    // First series: circle, second: square, third: triangle. Confirm path-shape diversity.
+    expect(svg).toContain("<circle");
+    expect(svg).toContain('<path class="stdlib-chart-point"');
+  });
+
+  it("explicit marker overrides autoVariant", () => {
+    const svg = scatter({
+      series: [{ marker: "diamond", data: [{ x: 0, y: 0 }] }],
+      autoVariant: true,
+    });
+    // Diamond shape: M cx cy-r L cx+r cy L cx cy+r L cx-r cy Z
+    expect(svg).toContain('<path class="stdlib-chart-point"');
+    expect(svg).not.toContain("<circle");
+  });
+});
+
+// =====================================================================
+// v0.7 — line styles
+// =====================================================================
+
+describe("charts.line — line styles", () => {
+  it("no stroke-dasharray for solid (default)", () => {
+    const svg = line({ series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }] });
+    expect(svg).not.toContain("stroke-dasharray=");
+  });
+
+  it("dashed lineStyle adds stroke-dasharray", () => {
+    const svg = line({
+      series: [{ lineStyle: "dashed", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+    });
+    expect(svg).toContain('stroke-dasharray="6 4"');
+  });
+
+  it("dotted produces a finer dash pattern", () => {
+    const svg = line({
+      series: [{ lineStyle: "dotted", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+    });
+    expect(svg).toContain('stroke-dasharray="2 3"');
+  });
+
+  it("dashdot produces a compound pattern", () => {
+    const svg = line({
+      series: [{ lineStyle: "dashdot", data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }],
+    });
+    expect(svg).toContain('stroke-dasharray="6 3 2 3"');
+  });
+
+  it("autoVariant cycles dash patterns", () => {
+    const svg = line({
+      series: [
+        { data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] },
+        { data: [{ x: 0, y: 1 }, { x: 1, y: 2 }] },
+        { data: [{ x: 0, y: 2 }, { x: 1, y: 3 }] },
+        { data: [{ x: 0, y: 3 }, { x: 1, y: 4 }] },
+      ],
+      autoVariant: true,
+    });
+    // Series 1: solid (no dash), 2: dashed, 3: dotted, 4: dashdot.
+    expect(svg).toContain('stroke-dasharray="6 4"');
+    expect(svg).toContain('stroke-dasharray="2 3"');
+    expect(svg).toContain('stroke-dasharray="6 3 2 3"');
+  });
+});
+
+// =====================================================================
+// v0.7 — log scale + minor ticks
+// =====================================================================
+
+describe("mapLog", () => {
+  it("maps domain endpoints to range endpoints", () => {
+    expect(mapLog(1, [1, 1000], [0, 100])).toBeCloseTo(0, 5);
+    expect(mapLog(1000, [1, 1000], [0, 100])).toBeCloseTo(100, 5);
+  });
+
+  it("maps decade boundaries proportionally", () => {
+    // 10 is one decade above 1, so 1/3 of the [0, 100] range.
+    expect(mapLog(10, [1, 1000], [0, 100])).toBeCloseTo(33.33, 1);
+  });
+
+  it("returns midpoint for invalid domains", () => {
+    expect(mapLog(5, [-1, 10], [0, 100])).toBe(50);
+    expect(mapLog(5, [1, 1], [0, 100])).toBe(50);
+  });
+});
+
+describe("niceLogTicks", () => {
+  it("includes decade boundaries enclosing the data", () => {
+    const r = niceLogTicks(3, 800);
+    expect(r.domain).toEqual([1, 1000]);
+    expect(r.ticks).toEqual([1, 10, 100, 1000]);
+  });
+
+  it("aligned input keeps the boundaries", () => {
+    const r = niceLogTicks(1, 100);
+    expect(r.ticks).toEqual([1, 10, 100]);
+  });
+});
+
+describe("charts.line — log scale", () => {
+  it("yAxis.scale: log produces tick labels at powers of 10", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 1 }, { x: 1, y: 1000 }] }],
+      yAxis: { scale: "log" },
+    });
+    // Y-axis tick labels at 1, 10, 100, 1000.
+    expect(svg).toContain(">1<");
+    expect(svg).toContain(">10<");
+    expect(svg).toContain(">100<");
+    expect(svg).toContain(">1000<");
+  });
+
+  it("xAxis.scale: log accepts only positive values", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0.1, y: 1 }, { x: 100, y: 5 }] }],
+      xAxis: { scale: "log" },
+    });
+    expect(svg).toContain("viewBox");
+    // Should not throw on positive xs only.
+  });
+
+  it("minorTicks: true produces minor-tick elements", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 100 }] }],
+      yAxis: { minorTicks: true },
+    });
+    expect(svg).toContain('<line class="stdlib-chart-minor-tick"');
+  });
+
+  it("minorTicks: false (default) produces no minor-tick elements", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 100 }] }],
+    });
+    expect(svg).not.toContain('<line class="stdlib-chart-minor-tick"');
+  });
+});
+
+// =====================================================================
+// v0.7 — error bars + error band
+// =====================================================================
+
+describe("charts.scatter — error bars", () => {
+  it("renders error bar elements for points with errY", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 5, y: 10, errY: 2 }] }],
+    });
+    expect(svg).toContain('<line class="stdlib-chart-errorbar"');
+    // Three lines per error bar (vertical + 2 caps).
+    expect(count(svg, '<line class="stdlib-chart-errorbar"')).toBe(3);
+  });
+
+  it("asymmetric errYHigh/errYLow are honored", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 5, y: 10, errYHigh: 5, errYLow: 1 }] }],
+    });
+    // Three lines (vertical + 2 caps); we just smoke-test render here.
+    expect(count(svg, '<line class="stdlib-chart-errorbar"')).toBe(3);
+  });
+
+  it("renders horizontal error bars for errX", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 5, y: 10, errX: 0.5 }] }],
+    });
+    // 3 errorbar lines (1 horizontal + 2 vertical caps).
+    expect(count(svg, '<line class="stdlib-chart-errorbar"')).toBe(3);
+  });
+
+  it("no error bars when no err* fields are set", () => {
+    const svg = scatter({ series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 1 }] }] });
+    expect(svg).not.toContain('<line class="stdlib-chart-errorbar"');
+  });
+
+  it("expands y-domain to include error extents", () => {
+    // Without err: y ranges from 0 to 10. With err=10, range expands beyond.
+    const a = scatter({ series: [{ data: [{ x: 0, y: 5 }, { x: 1, y: 10 }] }] });
+    const b = scatter({ series: [{ data: [{ x: 0, y: 5 }, { x: 1, y: 10, errY: 10 }] }] });
+    // The y-axis tick label '20' should appear in b but not a.
+    expect(b).toContain(">20<");
+    expect(a).not.toMatch(/>20</);
+  });
+});
+
+describe("charts.line — errorBand", () => {
+  it("renders an error-band path when errorBand: true", () => {
+    const svg = line({
+      series: [
+        {
+          data: [
+            { x: 0, y: 0, errYHigh: 1, errYLow: 1 },
+            { x: 1, y: 2, errYHigh: 1, errYLow: 1 },
+            { x: 2, y: 1, errYHigh: 1, errYLow: 1 },
+          ],
+        },
+      ],
+      errorBand: true,
+    });
+    expect(svg).toContain('<path class="stdlib-chart-error-band');
+  });
+
+  it("error band path is closed with Z", () => {
+    const svg = line({
+      series: [
+        {
+          data: [
+            { x: 0, y: 0, errY: 1 },
+            { x: 1, y: 2, errY: 1 },
+          ],
+        },
+      ],
+      errorBand: true,
+    });
+    const band = /<path class="stdlib-chart-error-band[^"]*" d="([^"]+)"/.exec(svg);
+    expect(band).not.toBeNull();
+    expect(band![1]).toMatch(/Z\s*$/);
+  });
+
+  it("no error band by default", () => {
+    const svg = line({
+      series: [
+        {
+          data: [
+            { x: 0, y: 0, errY: 1 },
+            { x: 1, y: 2, errY: 1 },
+          ],
+        },
+      ],
+    });
+    expect(svg).not.toContain('<path class="stdlib-chart-error-band');
+  });
+});
+
+// =====================================================================
+// v0.7 — trend line
+// =====================================================================
+
+describe("linearRegression", () => {
+  it("recovers slope and intercept of a perfect line", () => {
+    const r = linearRegression([
+      { x: 0, y: 3 },
+      { x: 1, y: 5 },
+      { x: 2, y: 7 },
+      { x: 3, y: 9 },
+    ]);
+    expect(r).not.toBeNull();
+    expect(r!.slope).toBeCloseTo(2, 6);
+    expect(r!.intercept).toBeCloseTo(3, 6);
+    expect(r!.r2).toBeCloseTo(1, 6);
+  });
+
+  it("returns null for fewer than 2 points", () => {
+    expect(linearRegression([])).toBeNull();
+    expect(linearRegression([{ x: 0, y: 0 }])).toBeNull();
+  });
+
+  it("returns null when all x are equal", () => {
+    expect(
+      linearRegression([
+        { x: 1, y: 1 },
+        { x: 1, y: 2 },
+        { x: 1, y: 3 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("computes a meaningful r² for noisy data", () => {
+    const r = linearRegression([
+      { x: 0, y: 0.1 },
+      { x: 1, y: 1.9 },
+      { x: 2, y: 4.05 },
+      { x: 3, y: 6.1 },
+    ]);
+    expect(r).not.toBeNull();
+    expect(r!.r2).toBeGreaterThan(0.99);
+  });
+});
+
+describe("charts.scatter — trendline", () => {
+  it("renders a trendline when trendline: true", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 2 }, { x: 2, y: 4 }] }],
+      trendline: true,
+    });
+    expect(svg).toContain('<line class="stdlib-chart-trendline"');
+  });
+
+  it("no trendline by default", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 2 }] }],
+    });
+    expect(svg).not.toContain('<line class="stdlib-chart-trendline"');
+  });
+
+  it("skips trendline when regression cannot be computed", () => {
+    // Single point → regression returns null.
+    const svg = scatter({
+      series: [{ data: [{ x: 5, y: 5 }] }],
+      trendline: true,
+    });
+    expect(svg).not.toContain('<line class="stdlib-chart-trendline"');
+  });
+});
+
+// =====================================================================
+// v0.7 — step plot
+// =====================================================================
+
+describe("stepPathD", () => {
+  it("'before' mode: extends horizontally to next x at OLD y, then jumps", () => {
+    const d = stepPathD([{ x: 0, y: 0 }, { x: 1, y: 5 }], "before");
+    expect(d).toBe("M 0 0 L 1 0 L 1 5");
+  });
+
+  it("'after' mode: jumps at current x, then extends horizontally", () => {
+    const d = stepPathD([{ x: 0, y: 0 }, { x: 1, y: 5 }], "after");
+    expect(d).toBe("M 0 0 L 0 5 L 1 5");
+  });
+
+  it("'middle' mode: step at midpoint of x", () => {
+    const d = stepPathD([{ x: 0, y: 0 }, { x: 2, y: 5 }], "middle");
+    expect(d).toBe("M 0 0 L 1 0 L 1 5 L 2 5");
+  });
+
+  it("returns empty for empty input", () => {
+    expect(stepPathD([], "before")).toBe("");
+  });
+});
+
+describe("charts.line — step", () => {
+  it("step: 'before' produces only L commands (no smooth C)", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 5 }, { x: 2, y: 3 }] }],
+      step: "before",
+    });
+    const path = /<path class="stdlib-chart-line[^"]*" d="([^"]+)"/.exec(svg)![1]!;
+    expect(path).toContain(" L ");
+    expect(path).not.toContain(" C ");
+  });
+
+  it("step takes precedence over smooth", () => {
+    const svg = line({
+      series: [{ data: [{ x: 0, y: 0 }, { x: 1, y: 5 }, { x: 2, y: 3 }] }],
+      step: "after",
+      smooth: true,
+    });
+    const path = /<path class="stdlib-chart-line[^"]*" d="([^"]+)"/.exec(svg)![1]!;
+    expect(path).not.toContain(" C ");
+  });
+});
+
+// =====================================================================
+// v0.7 — histogram
+// =====================================================================
+
+describe("autoBin", () => {
+  it("uses Sturges' formula by default", () => {
+    const r = autoBin([1, 2, 3, 4, 5, 6, 7, 8]);
+    // n=8 → ceil(log2(8))+1 = 4 bins
+    expect(r.edges.length).toBe(5);
+    expect(r.counts.length).toBe(4);
+  });
+
+  it("respects explicit bin count", () => {
+    const r = autoBin([1, 2, 3, 4, 5], 5);
+    expect(r.counts.length).toBe(5);
+  });
+
+  it("respects explicit bin edges", () => {
+    const r = autoBin([1, 2, 5, 8, 9], [0, 3, 6, 10]);
+    expect(r.edges).toEqual([0, 3, 6, 10]);
+    expect(r.counts).toEqual([2, 1, 2]);
+  });
+
+  it("filters non-finite values", () => {
+    const r = autoBin([1, NaN, 5, Infinity, 9], 3);
+    expect(r.counts.reduce((a, b) => a + b, 0)).toBe(3);
+  });
+
+  it("handles empty/all-non-finite input", () => {
+    expect(autoBin([])).toEqual({ edges: [0, 1], counts: [0] });
+    expect(autoBin([NaN, Infinity])).toEqual({ edges: [0, 1], counts: [0] });
+  });
+});
+
+describe("charts.histogram", () => {
+  it("renders one rect per bin", () => {
+    const svg = histogram({ data: [1, 2, 3, 4, 5, 6, 7, 8], bins: 4 });
+    expect(count(svg, '<rect class="stdlib-chart-bar')).toBe(4);
+  });
+
+  it("returns empty-state for empty data", () => {
+    const svg = histogram({ data: [] });
+    expect(svg).toContain("no data");
+  });
+
+  it("respects custom bin count", () => {
+    const svg = histogram({ data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], bins: 5 });
+    expect(count(svg, '<rect class="stdlib-chart-bar')).toBe(5);
+  });
+
+  it("accepts explicit bin edges", () => {
+    const svg = histogram({ data: [1, 5, 5, 9], bins: [0, 4, 8, 10] });
+    expect(count(svg, '<rect class="stdlib-chart-bar')).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// =====================================================================
+// v0.7 — box plot
+// =====================================================================
+
+describe("computeBoxStats", () => {
+  it("computes quartiles for known data", () => {
+    const r = computeBoxStats([1, 2, 3, 4, 5, 6, 7]);
+    expect(r).not.toBeNull();
+    expect(r!.q1).toBeCloseTo(2.5, 5);
+    expect(r!.q2).toBeCloseTo(4, 5);
+    expect(r!.q3).toBeCloseTo(5.5, 5);
+  });
+
+  it("identifies outliers beyond 1.5×IQR", () => {
+    const r = computeBoxStats([1, 2, 3, 4, 5, 100]);
+    expect(r).not.toBeNull();
+    expect(r!.outliers).toContain(100);
+  });
+
+  it("returns null for empty/all-non-finite input", () => {
+    expect(computeBoxStats([])).toBeNull();
+    expect(computeBoxStats([NaN, Infinity])).toBeNull();
+  });
+
+  it("filters non-finite values", () => {
+    const r = computeBoxStats([1, NaN, 3, Infinity, 5]);
+    expect(r).not.toBeNull();
+    expect(r!.q2).toBe(3);
+  });
+
+  it("min and max are the actual data extremes", () => {
+    const r = computeBoxStats([1, 2, 3, 4, 100]);
+    expect(r!.min).toBe(1);
+    expect(r!.max).toBe(100);
+  });
+});
+
+describe("charts.boxplot", () => {
+  it("renders one box per group", () => {
+    const svg = boxplot({
+      groups: [
+        { label: "A", values: [1, 2, 3, 4, 5] },
+        { label: "B", values: [3, 4, 5, 6, 7] },
+      ],
+    });
+    expect(count(svg, '<rect class="stdlib-chart-box ')).toBe(2);
+  });
+
+  it("renders median line per box", () => {
+    const svg = boxplot({
+      groups: [{ label: "A", values: [1, 2, 3, 4, 5] }],
+    });
+    expect(svg).toContain('<line class="stdlib-chart-box-median"');
+  });
+
+  it("renders whiskers and caps", () => {
+    const svg = boxplot({
+      groups: [{ label: "A", values: [1, 2, 3, 4, 5] }],
+    });
+    expect(svg).toContain('class="stdlib-chart-box-whisker"');
+    expect(svg).toContain('class="stdlib-chart-box-cap"');
+  });
+
+  it("renders outliers when present (default showOutliers)", () => {
+    const svg = boxplot({
+      groups: [{ label: "A", values: [1, 2, 3, 4, 5, 100] }],
+    });
+    expect(svg).toContain('class="stdlib-chart-box-outlier ');
+  });
+
+  it("showOutliers: false suppresses outlier dots", () => {
+    const svg = boxplot({
+      groups: [{ label: "A", values: [1, 2, 3, 4, 5, 100] }],
+      showOutliers: false,
+    });
+    expect(svg).not.toContain('<circle class="stdlib-chart-box-outlier');
+  });
+
+  it("returns empty-state for empty groups", () => {
+    expect(boxplot({ groups: [] })).toContain("no data");
+    expect(boxplot({ groups: [{ label: "A", values: [] }] })).toContain("no data");
+  });
+
+  it("renders one tick label per group on x axis", () => {
+    const svg = boxplot({
+      groups: [
+        { label: "Class 1", values: [1, 2, 3] },
+        { label: "Class 2", values: [4, 5, 6] },
+      ],
+    });
+    expect(svg).toContain(">Class 1<");
+    expect(svg).toContain(">Class 2<");
   });
 });

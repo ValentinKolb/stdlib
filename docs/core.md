@@ -383,35 +383,117 @@ single query — use them for sorting, not for cross-query thresholds.
 
 ## charts
 
-SVG chart generation: scatter, line (with optional smooth Catmull-Rom curves),
-bar (with positive/negative support and optional per-bar coloring), pie, donut,
-and a minimalist sparkline. Returns SVG strings — inject into the DOM, write
-to disk, or send over the wire. Pure native, no peer dependencies.
+Eight SVG chart generators covering the basic shapes plus the features most
+useful for dashboards and scientific publication: `scatter`, `line`, `bar`,
+`pie`, `donut`, `sparkline`, `histogram`, `boxplot`. Returns SVG strings —
+inject into the DOM, write to disk, or send over the wire. Pure native, no
+peer dependencies.
 
 ```ts
 import { charts } from "@valentinkolb/stdlib";
 
-charts.scatter({ series: [{ data: [{x:1,y:2,size:10},{x:2,y:5,size:30}] }], sizeRange: [3, 14] });
-charts.line({ series: [{ data: [...] }, { data: [...] }] });   // smooth curves by default
-charts.bar({ data: [{label:"Q1",value:120},{label:"Q2",value:180}], colorByBar: true });
-charts.pie({ data: [{label:"A",value:30},{label:"B",value:50}], showLabels: true });
-charts.donut({ data: [...] });                                  // pie with innerRadius 0.6
+charts.scatter({ series: [{ data: [{x:1,y:2,size:10}] }], sizeRange: [3,14] });
+charts.line({ series: [{ data: [...] }, { data: [...] }] });
+charts.bar({ data: [{label:"Q1",value:120}], colorByBar: true });
+charts.pie({ data: [{label:"A",value:30}], showLabels: true });
+charts.donut({ data: [...] });
 charts.sparkline({ data: [3,7,5,9,12,10,14], showLast: true });
+charts.histogram({ data: observations, bins: 30 });
+charts.boxplot({ groups: [{label:"A", values:[1,2,3,4,5]}] });
+```
+
+### Headers, axes, references, legend (every chart type)
+
+```ts
+charts.bar({
+  title: "Quarterly Revenue", subtitle: "in thousand EUR",
+  data: quarterlyRevenue,
+  yAxis: { label: "Revenue", format: v => `€${v}k`, scale: "linear", minorTicks: true },
+  references: [{ value: 200, label: "Target" }],
+  showValues: true,                              // value labels on bars
+  colorByBar: true, legend: true,
+});
+```
+
+### Lines: smooth, area, step, error band, line styles
+
+```ts
+charts.line({
+  series: [
+    { label: "Revenue", data: revenue, lineStyle: "solid" },
+    { label: "Costs",   data: costs,   lineStyle: "dashed" },
+  ],
+  smooth: true,        // Catmull-Rom by default; pass false for straight
+  area: true,          // translucent fill below each line
+  step: "before",      // step plot mode (overrides smooth)
+  errorBand: true,     // CI band between errYHigh/errYLow per point
+  autoVariant: true,   // cycle line styles when not explicit
+  legend: true,
+  references: [{ value: 50, label: "baseline" }],
+});
+```
+
+### Scatter: bubbles, markers, error bars, trend line
+
+```ts
+charts.scatter({
+  series: [
+    { label: "Group A", marker: "square",   data: [{ x: 1, y: 2, size: 30, errY: 0.5 }] },
+    { label: "Group B", marker: "triangle", data: [...] },
+  ],
+  sizeRange: [3, 16],   // bubble radii (when Point.size present)
+  autoVariant: true,    // cycle marker shapes
+  trendline: true,      // linear-regression overlay
+  legend: true,
+});
+```
+
+`Point` supports symmetric `errY`/`errX` or asymmetric `errYHigh`/`errYLow`/
+`errXHigh`/`errXLow` for asymmetric uncertainty.
+
+### Logarithmic axes
+
+```ts
+charts.scatter({
+  series: [{ data: powerLawData }],
+  xAxis: { scale: "log" },
+  yAxis: { scale: "log", minorTicks: true },
+});
+```
+
+Non-positive values are filtered automatically under log scale.
+
+### Histogram & box plot (statistical)
+
+```ts
+charts.histogram({
+  data: observations,                // raw numeric list
+  bins: 30,                           // number, edge array, or undefined (Sturges')
+  yAxis: { label: "Count" },
+});
+
+charts.boxplot({
+  groups: [
+    { label: "Class A", values: scoresA },
+    { label: "Class B", values: scoresB },
+  ],
+  showOutliers: true,                 // default
+  colorByBox: true,
+});
 ```
 
 ### Common options (`ChartOptions`)
 
 | option | default | notes |
 |---|---|---|
-| `width` | 400 (20 sparkline) | viewBox width |
+| `width` | 400 (80 sparkline) | viewBox width |
 | `height` | 240 (20 sparkline) | viewBox height |
 | `padding` | `{16, 16, 32, 40}` | number applies to all sides |
 | `className` | — | appended to root `<svg>`'s class |
+| `title` / `subtitle` | — | centered header above the plot |
 
-For axis-bearing charts (`line`, `scatter`, `bar`): `xAxis?` / `yAxis?` accept
-`{ ticks?, format?, label? }`. For series charts (`line`, `scatter`):
-each entry is `{ label?, data: Point[] }`. `Point` is `{ x, y, size? }` —
-`size` controls dot radius in `scatter` (mapped via `sizeRange`).
+`AxisOptions` accepts `{ ticks?, format?, label?, scale?: "linear" | "log",
+minorTicks? }`.
 
 ### Styling
 
@@ -426,8 +508,10 @@ Charts ship with embedded default CSS. Override via:
    ```css
    .my-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
    ```
-3. **`currentColor`** is used for axes / tick labels / sparklines — set the
-   parent's `color` to retheme (dark mode "just works").
+3. **`currentColor`** is used for axes, tick labels, error bars, references,
+   and sparklines — set the parent's `color` for theming (dark mode "just works").
+4. The chart's font is **inherited from the surrounding HTML** — the app's
+   font automatically applies.
 
 Pass `className` to scope per-instance styles.
 

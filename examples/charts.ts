@@ -1,10 +1,10 @@
 /**
  * Visual review for src/charts.ts.
  *
- * Run with `bun run examples/charts.ts`. Generates SVG files plus an
- * `index.html` in `examples/out/` so all chart variants can be reviewed at
- * once in a browser. SVGs are inlined into the HTML so the demo theme
- * sections actually exhibit `currentColor` and `--stdlib-chart-c*` overrides.
+ * Run with `bun run examples/charts.ts`. Generates one SVG per case plus
+ * an `index.html` in `examples/out/` showing every chart type and feature
+ * in a single unified grid. SVGs are inlined into the HTML so theme demos
+ * (currentColor, custom-property palettes) actually apply.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -13,35 +13,19 @@ import { charts } from "../src/charts";
 
 const OUT_DIR = join(import.meta.dir, "out");
 
-// Sample datasets ---------------------------------------------------------
-
-const linearSeries = Array.from({ length: 12 }, (_, i) => ({
-  x: i,
-  y: Math.round(10 + i * 4 + Math.sin(i * 0.7) * 8),
-}));
+// Datasets ----------------------------------------------------------------
 
 const noisySeriesA = Array.from({ length: 30 }, (_, i) => ({
   x: i,
-  y: Math.round(50 + Math.sin(i * 0.3) * 20 + (Math.random() - 0.5) * 10),
+  y: Math.round(50 + Math.sin(i * 0.3) * 18 + (Math.random() - 0.5) * 8),
 }));
 const noisySeriesB = Array.from({ length: 30 }, (_, i) => ({
   x: i,
-  y: Math.round(40 + Math.cos(i * 0.4) * 15 + (Math.random() - 0.5) * 8),
+  y: Math.round(40 + Math.cos(i * 0.4) * 14 + (Math.random() - 0.5) * 6),
 }));
-
-const scatterCloud = Array.from({ length: 60 }, () => ({
-  x: Math.round(Math.random() * 100),
-  y: Math.round(Math.random() * 100),
-}));
-
-const scatterCloud2 = Array.from({ length: 40 }, () => ({
-  x: Math.round(50 + Math.random() * 60),
-  y: Math.round(20 + Math.random() * 50),
-}));
-
-const manyPointsLine = Array.from({ length: 200 }, (_, i) => ({
+const noisySeriesC = Array.from({ length: 30 }, (_, i) => ({
   x: i,
-  y: Math.round(100 + Math.sin(i * 0.05) * 40 + Math.cos(i * 0.13) * 20),
+  y: Math.round(35 + Math.sin(i * 0.2 + 1) * 10 + (Math.random() - 0.5) * 5),
 }));
 
 const quarterlyRevenue = [
@@ -60,11 +44,6 @@ const monthlyMix = [
   { label: "Jun", value: 12 },
 ];
 
-const manyBars = Array.from({ length: 20 }, (_, i) => ({
-  label: String(i + 1),
-  value: Math.round(20 + Math.sin(i * 0.4) * 30 + Math.random() * 10),
-}));
-
 const fiveSlices = [
   { label: "Engineering", value: 42 },
   { label: "Sales", value: 23 },
@@ -73,133 +52,181 @@ const fiveSlices = [
   { label: "Other", value: 6 },
 ];
 
+// Box-Muller for an approximately gaussian sample.
+const gauss = (mean: number, sd: number): number => {
+  const u1 = Math.random();
+  const u2 = Math.random();
+  return mean + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+};
+
 // Cases -------------------------------------------------------------------
 
 type Case = { name: string; title: string; svg: string };
 
 const cases: Case[] = [
   {
-    name: "scatter-basic",
-    title: "scatter — single cloud",
+    name: "scatter",
+    title: "Scatter — bubble chart, multi-series, autoVariant markers",
     svg: charts.scatter({
-      series: [{ data: scatterCloud }],
-      xAxis: { label: "X" },
-      yAxis: { label: "Y" },
+      title: "Two populations",
+      series: [
+        {
+          label: "Group A",
+          data: Array.from({ length: 18 }, () => ({
+            x: 5 + Math.random() * 30,
+            y: 10 + Math.random() * 60,
+            size: 5 + Math.random() * 95,
+          })),
+        },
+        {
+          label: "Group B",
+          data: Array.from({ length: 18 }, () => ({
+            x: 30 + Math.random() * 30,
+            y: 20 + Math.random() * 60,
+            size: 5 + Math.random() * 95,
+          })),
+        },
+      ],
+      sizeRange: [3, 16],
+      autoVariant: true,
+      legend: true,
     }),
   },
   {
-    name: "scatter-multi",
-    title: "scatter — two groups",
+    name: "scatter-science",
+    title: "Scatter — error bars + trend line",
     svg: charts.scatter({
+      title: "Reaction time vs trial",
+      yAxis: { label: "ms ± σ" },
+      xAxis: { label: "Trial #" },
       series: [
-        { data: scatterCloud },
-        { data: scatterCloud2 },
+        {
+          data: Array.from({ length: 14 }, (_, i) => ({
+            x: i,
+            y: Math.round(20 + i * 3 + Math.sin(i) * 4),
+            errY: 2 + Math.random() * 2.5,
+          })),
+        },
+      ],
+      trendline: true,
+    }),
+  },
+  {
+    name: "line",
+    title: "Line — multi-series, smooth, autoVariant styles, legend",
+    svg: charts.line({
+      title: "Revenue vs Costs vs Forecast",
+      yAxis: { format: (v) => `€${v}k` },
+      series: [
+        { label: "Revenue", data: noisySeriesA },
+        { label: "Costs", data: noisySeriesB },
+        { label: "Forecast", data: noisySeriesC },
+      ],
+      autoVariant: true,
+      legend: true,
+      width: 480,
+      height: 280,
+    }),
+  },
+  {
+    name: "line-area",
+    title: "Line — area chart with reference",
+    svg: charts.line({
+      series: [{ data: noisySeriesA }],
+      area: true,
+      references: [{ value: 50, label: "baseline" }],
+    }),
+  },
+  {
+    name: "line-errorband",
+    title: "Line — error band (95% CI)",
+    svg: charts.line({
+      title: "Estimate with confidence interval",
+      series: [
+        {
+          data: Array.from({ length: 24 }, (_, i) => {
+            const y = 50 + Math.sin(i * 0.4) * 18;
+            const err = 4 + Math.random() * 3;
+            return { x: i, y, errYHigh: err, errYLow: err };
+          }),
+        },
+      ],
+      errorBand: true,
+    }),
+  },
+  {
+    name: "line-log",
+    title: "Line — logarithmic y-axis with minor ticks",
+    svg: charts.line({
+      title: "Logarithmic decay",
+      yAxis: { scale: "log", label: "Intensity", minorTicks: true },
+      xAxis: { label: "Step" },
+      series: [
+        {
+          data: Array.from({ length: 30 }, (_, i) => ({
+            x: i,
+            y: Math.pow(10, 0.5 + i * 0.1) * (1 + Math.sin(i * 0.5) * 0.05),
+          })),
+        },
       ],
     }),
   },
   {
-    name: "line-single",
-    title: "line — single series",
+    name: "line-step",
+    title: "Line — step plot (population by census year)",
     svg: charts.line({
-      series: [{ data: linearSeries }],
-    }),
-  },
-  {
-    name: "line-multi",
-    title: "line — two series",
-    svg: charts.line({
+      title: "Population by census year",
+      yAxis: { format: (v) => `${v}M` },
       series: [
-        { label: "Sample A", data: noisySeriesA },
-        { label: "Sample B", data: noisySeriesB },
+        {
+          data: [
+            { x: 1990, y: 250 },
+            { x: 2000, y: 281 },
+            { x: 2010, y: 309 },
+            { x: 2020, y: 331 },
+          ],
+        },
       ],
+      step: "before",
     }),
   },
   {
-    name: "line-formatted-axis",
-    title: "line — formatted y axis ($Xk)",
-    svg: charts.line({
-      series: [{ data: linearSeries }],
-      yAxis: { format: (v) => `$${v}k`, label: "Revenue" },
-      xAxis: { label: "Month" },
+    name: "bar",
+    title: "Bar — title + value labels + target reference + formatted axis",
+    svg: charts.bar({
+      title: "Quarterly Revenue",
+      subtitle: "in thousand EUR",
+      data: quarterlyRevenue,
+      yAxis: { format: (v) => `€${v}k` },
+      references: [{ value: 200, label: "Target" }],
+      showValues: true,
     }),
   },
   {
-    name: "line-many-points",
-    title: "line — 200 points",
-    svg: charts.line({
-      series: [{ data: manyPointsLine }],
-      width: 720,
+    name: "bar-mixed",
+    title: "Bar — positive / negative with values",
+    svg: charts.bar({
+      data: monthlyMix,
+      showValues: true,
     }),
-  },
-  {
-    name: "line-smooth",
-    title: "line — smooth Catmull-Rom curves",
-    svg: charts.line({
-      series: [
-        { label: "Sample A", data: noisySeriesA },
-        { label: "Sample B", data: noisySeriesB },
-      ],
-      smooth: true,
-    }),
-  },
-  {
-    name: "line-smooth-single",
-    title: "line — smooth single series",
-    svg: charts.line({
-      series: [{ data: linearSeries }],
-      smooth: true,
-      yAxis: { format: (v) => `$${v}k`, label: "Revenue" },
-      xAxis: { label: "Month" },
-    }),
-  },
-  {
-    name: "bar-basic",
-    title: "bar — quarterly revenue",
-    svg: charts.bar({ data: quarterlyRevenue }),
   },
   {
     name: "bar-multicolor",
-    title: "bar — colorByBar (each bar a different color)",
-    svg: charts.bar({ data: quarterlyRevenue, colorByBar: true }),
-  },
-  {
-    name: "bar-multicolor-many",
-    title: "bar — multicolor cycling through 8 colors",
-    svg: charts.bar({ data: manyBars, width: 720, colorByBar: true }),
-  },
-  {
-    name: "bar-many",
-    title: "bar — 20 bars",
-    svg: charts.bar({ data: manyBars, width: 720 }),
-  },
-  {
-    name: "bar-negative",
-    title: "bar — pos/neg with zero baseline",
-    svg: charts.bar({ data: monthlyMix }),
-  },
-  {
-    name: "bar-formatted",
-    title: "bar — formatted % axis",
+    title: "Bar — colorByBar with legend",
     svg: charts.bar({
-      data: [
-        { label: "Mon", value: 78 },
-        { label: "Tue", value: 84 },
-        { label: "Wed", value: 91 },
-        { label: "Thu", value: 88 },
-        { label: "Fri", value: 73 },
-      ],
-      yAxis: { format: (v) => `${v}%`, label: "Uptime" },
+      title: "Quarterly Performance",
+      data: quarterlyRevenue,
+      colorByBar: true,
+      legend: true,
+      width: 480,
+      height: 280,
     }),
   },
   {
-    name: "pie-basic",
-    title: "pie — five slices",
-    svg: charts.pie({ data: fiveSlices }),
-  },
-  {
-    name: "pie-with-labels",
-    title: "pie — with labels",
+    name: "pie",
+    title: "Pie — slices with labels",
     svg: charts.pie({
+      title: "Team allocation",
       data: fiveSlices,
       showLabels: true,
       width: 480,
@@ -207,14 +234,10 @@ const cases: Case[] = [
     }),
   },
   {
-    name: "pie-single-slice",
-    title: "pie — 100% (full circle)",
-    svg: charts.pie({ data: [{ label: "All", value: 1 }] }),
-  },
-  {
-    name: "donut-basic",
-    title: "donut — default ratio",
+    name: "donut",
+    title: "Donut — usage indicator",
     svg: charts.donut({
+      title: "Storage used",
       data: [
         { label: "Used", value: 67 },
         { label: "Free", value: 33 },
@@ -222,99 +245,46 @@ const cases: Case[] = [
     }),
   },
   {
-    name: "donut-thick",
-    title: "donut — innerRadius 0.3",
-    svg: charts.donut({
-      data: fiveSlices,
-      innerRadius: 0.3,
-      showLabels: true,
-      width: 480,
-      height: 320,
-    }),
-  },
-  {
-    name: "scatter-bubbles",
-    title: "scatter — bubble chart (size dimension)",
-    svg: charts.scatter({
-      series: [
-        {
-          data: Array.from({ length: 30 }, () => ({
-            x: Math.round(Math.random() * 100),
-            y: Math.round(Math.random() * 100),
-            size: Math.round(5 + Math.random() * 95),
-          })),
-        },
-      ],
-      sizeRange: [4, 22],
-    }),
-  },
-  {
-    name: "scatter-bubbles-multi",
-    title: "scatter — bubbles, two groups",
-    svg: charts.scatter({
-      series: [
-        {
-          data: Array.from({ length: 20 }, () => ({
-            x: Math.round(Math.random() * 50),
-            y: Math.round(Math.random() * 100),
-            size: Math.round(10 + Math.random() * 90),
-          })),
-        },
-        {
-          data: Array.from({ length: 20 }, () => ({
-            x: Math.round(50 + Math.random() * 50),
-            y: Math.round(Math.random() * 100),
-            size: Math.round(10 + Math.random() * 90),
-          })),
-        },
-      ],
-      sizeRange: [3, 18],
-    }),
-  },
-  {
-    name: "sparkline-basic",
-    title: "sparkline — bare numbers",
+    name: "sparkline",
+    title: "Sparkline — smooth + min/max + last",
     svg: charts.sparkline({
-      data: [4, 7, 2, 9, 5, 12, 8, 15, 11, 18, 14, 20],
-    }),
-  },
-  {
-    name: "sparkline-smooth",
-    title: "sparkline — smooth + last-point dot",
-    svg: charts.sparkline({
-      data: [4, 7, 2, 9, 5, 12, 8, 15, 11, 18, 14, 20],
-      smooth: true,
+      data: [4, 7, 2, 9, 5, 12, 8, 15, 11, 18, 14, 20, 17, 22, 19],
+      showMinMax: true,
       showLast: true,
-      width: 120,
-      height: 30,
+      width: 160,
+      height: 32,
     }),
   },
   {
-    name: "sparkline-many",
-    title: "sparkline — 100 points wide",
-    svg: charts.sparkline({
-      data: Array.from({ length: 100 }, (_, i) =>
-        Math.round(50 + Math.sin(i * 0.2) * 30 + Math.cos(i * 0.5) * 10),
-      ),
-      width: 240,
-      height: 36,
-      smooth: true,
+    name: "histogram",
+    title: "Histogram — gaussian sample (n=1000)",
+    svg: charts.histogram({
+      title: "Reaction times",
+      xAxis: { label: "ms" },
+      yAxis: { label: "Count" },
+      data: Array.from({ length: 1000 }, () => gauss(50, 15)),
+      bins: 30,
     }),
   },
   {
-    name: "edge-empty-line",
-    title: "edge — empty line",
-    svg: charts.line({ series: [] }),
-  },
-  {
-    name: "edge-empty-pie",
-    title: "edge — empty pie",
-    svg: charts.pie({ data: [] }),
-  },
-  {
-    name: "edge-single-bar",
-    title: "edge — single bar",
-    svg: charts.bar({ data: [{ label: "only", value: 42 }] }),
+    name: "boxplot",
+    title: "Box plot — distribution per group",
+    svg: charts.boxplot({
+      title: "Score distribution by class",
+      yAxis: { label: "Score" },
+      groups: ["A", "B", "C", "D", "E"].map((label, i) => ({
+        label,
+        values: Array.from({ length: 50 }, () => {
+          const base = 50 + i * 5;
+          return (
+            base +
+            (Math.random() - 0.5) * 20 +
+            (Math.random() < 0.05 ? (Math.random() - 0.5) * 80 : 0)
+          );
+        }),
+      })),
+      colorByBox: true,
+    }),
   },
 ];
 
@@ -323,7 +293,7 @@ for (const c of cases) {
   await writeFile(join(OUT_DIR, `${c.name}.svg`), c.svg);
 }
 
-// Build index.html with the SVGs inlined so theme overrides actually apply.
+// HTML --------------------------------------------------------------------
 
 const card = (c: Case): string => `
   <figure>
@@ -331,11 +301,8 @@ const card = (c: Case): string => `
     <div class="svg-wrap">${c.svg}</div>
   </figure>`.trim();
 
-const themeDarkSubset: Case[] = cases.filter((c) =>
-  ["line-multi", "bar-basic", "donut-basic", "scatter-multi"].includes(c.name),
-);
-const themeCustomSubset: Case[] = cases.filter((c) =>
-  ["line-multi", "bar-many", "pie-with-labels"].includes(c.name),
+const themedSubset: Case[] = cases.filter((c) =>
+  ["line", "bar-multicolor", "donut", "scatter"].includes(c.name),
 );
 
 const html = `<!DOCTYPE html>
@@ -347,7 +314,7 @@ const html = `<!DOCTYPE html>
     body {
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       margin: 0;
-      padding: 24px;
+      padding: 32px;
       background: #f9fafb;
       color: #111827;
     }
@@ -401,9 +368,8 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
   <h1>stdlib charts</h1>
-  <p class="lead">All chart variants generated by <code>examples/charts.ts</code>. SVGs are inlined so theme overrides (currentColor, custom-property colors) apply.</p>
+  <p class="lead">Every chart type and feature in one grid. SVGs are inlined so theme overrides (currentColor, --stdlib-chart-c1..c8) apply.</p>
 
-  <h2>Default theme</h2>
   <div class="grid">
 ${cases.map(card).join("\n")}
   </div>
@@ -412,7 +378,7 @@ ${cases.map(card).join("\n")}
     <h2>Dark theme — parent sets <code>color: #f3f4f6</code></h2>
     <p class="lead" style="color: #9ca3af">Axes and tick labels use <code>currentColor</code>, so they pick up the parent's color.</p>
     <div class="grid">
-${themeDarkSubset.map(card).join("\n")}
+${themedSubset.map(card).join("\n")}
     </div>
   </section>
 
@@ -420,7 +386,7 @@ ${themeDarkSubset.map(card).join("\n")}
     <h2>Custom palette — overridden <code>--stdlib-chart-c1</code> through <code>-c8</code></h2>
     <p class="lead">Sunset palette via CSS custom properties. No JS, no rebuild.</p>
     <div class="grid">
-${themeCustomSubset.map(card).join("\n")}
+${themedSubset.map(card).join("\n")}
     </div>
   </section>
 </body>

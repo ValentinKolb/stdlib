@@ -651,39 +651,65 @@ fuzzy.closest("hellp", ["hello", "help"]);
 
 ## charts
 
-SVG chart generators: scatter, line, bar, pie, donut, and a minimalist
-sparkline. All return SVG strings — inject into the DOM, write to disk, or
-send over the wire. Pure native, no peer dependencies. Stylable via CSS
-classes and CSS custom properties.
+Eight SVG chart generators: scatter, line, bar, pie, donut, sparkline,
+histogram, boxplot. All return SVG strings — inject into the DOM, write to
+disk, or send over the wire. Pure native, no peer dependencies. Stylable
+via CSS classes and CSS custom properties.
 
 ### API
 
 ```ts
-type Point = { x: number; y: number; size?: number };  // size honored by scatter
-type Series = { label?: string; data: Point[] };
+type Point = {
+  x: number; y: number;
+  size?: number;                 // bubble dimension (scatter)
+  errY?: number; errYHigh?: number; errYLow?: number;   // y uncertainty
+  errX?: number; errXHigh?: number; errXLow?: number;   // x uncertainty
+};
+type MarkerShape = "circle" | "square" | "triangle" | "diamond" | "plus" | "cross";
+type LineStyle = "solid" | "dashed" | "dotted" | "dashdot";
+type Series = {
+  label?: string; data: Point[];
+  marker?: MarkerShape;          // scatter point shape
+  lineStyle?: LineStyle;          // line dash pattern
+};
 type BarItem = { label: string; value: number };
 type SliceItem = { label: string; value: number };
-
-type AxisOptions = { ticks?: number; format?: (v: number) => string; label?: string };
+type ReferenceLine = { value: number; axis?: "x" | "y"; label?: string };
+type AxisOptions = {
+  ticks?: number; format?: (v: number) => string; label?: string;
+  scale?: "linear" | "log";       // default "linear"
+  minorTicks?: boolean;           // default false
+};
 type ChartOptions = {
   width?: number; height?: number;
   padding?: number | Partial<{ top: number; right: number; bottom: number; left: number }>;
   className?: string;
+  title?: string; subtitle?: string;
 };
 
 charts.scatter(opts: ChartOptions & {
   series: Series[]; xAxis?: AxisOptions; yAxis?: AxisOptions;
-  sizeRange?: [number, number];   // pixel-radius range when Point.size is used
+  references?: ReferenceLine[]; legend?: boolean;
+  sizeRange?: [number, number];   // bubble pixel radii
+  autoVariant?: boolean;          // cycle marker shapes per series
+  trendline?: boolean;            // linear-regression overlay
 }): string
 
 charts.line(opts: ChartOptions & {
   series: Series[]; xAxis?: AxisOptions; yAxis?: AxisOptions;
-  smooth?: boolean;               // default true (Catmull-Rom curves)
+  references?: ReferenceLine[]; legend?: boolean;
+  smooth?: boolean;               // default true (Catmull-Rom)
+  area?: boolean;                  // translucent fill below
+  step?: "before" | "after" | "middle";   // step plot mode
+  autoVariant?: boolean;          // cycle line styles per series
+  errorBand?: boolean;             // CI band between errYHigh/errYLow
 }): string
 
 charts.bar(opts: ChartOptions & {
   data: BarItem[]; yAxis?: AxisOptions;
-  colorByBar?: boolean;           // each bar a different series color
+  references?: ReferenceLine[]; legend?: boolean;
+  colorByBar?: boolean;            // distinct color per bar
+  showValues?: boolean;            // value label per bar
 }): string
 
 charts.pie(opts: ChartOptions & {
@@ -693,11 +719,27 @@ charts.pie(opts: ChartOptions & {
 charts.donut(opts): string         // pie() with innerRadius default 0.6
 
 charts.sparkline(opts: {
-  data: number[] | Point[];        // bare numbers auto-x to index
+  data: number[] | Point[];
   width?: number; height?: number; // defaults 80x20
   smooth?: boolean;                // default true
   showLast?: boolean;              // dot at last point
+  showMinMax?: boolean;            // dots at highest/lowest points
   className?: string;
+}): string
+
+charts.histogram(opts: ChartOptions & {
+  data: number[];                  // raw observations
+  bins?: number | number[];        // count, edges, or undefined (Sturges')
+  yAxis?: AxisOptions; xAxis?: AxisOptions;
+  references?: ReferenceLine[];
+}): string
+
+charts.boxplot(opts: ChartOptions & {
+  groups: { label: string; values: number[] }[];
+  yAxis?: AxisOptions;
+  showOutliers?: boolean;          // default true
+  references?: ReferenceLine[];
+  colorByBox?: boolean;
 }): string
 ```
 
@@ -706,33 +748,54 @@ charts.sparkline(opts: {
 ```ts
 import { charts } from "@valentinkolb/stdlib";
 
-// Multi-series line with formatted axis
+// Multi-series line with title, formatted axis, autoVariant styles, legend
 charts.line({
+  title: "Revenue vs Costs", subtitle: "monthly",
   series: [
     { label: "Revenue", data: revenue },
     { label: "Costs",   data: costs },
   ],
-  yAxis: { format: v => `$${v}k` },
-  xAxis: { label: "Month" },
+  yAxis: { format: v => `€${v}k` },
+  autoVariant: true, legend: true,
 });
 
-// Bubble chart: 3rd dimension via size
+// Scatter with error bars + linear regression
 charts.scatter({
-  series: [{ data: [{x:10, y:50, size:200}, {x:20, y:30, size:50}, ...] }],
-  sizeRange: [4, 22],
+  title: "Reaction times",
+  yAxis: { label: "ms ± σ" },
+  series: [{ data: trials.map(t => ({ x: t.id, y: t.mean, errY: t.sd })) }],
+  trendline: true,
 });
 
-// Multicolor bar chart
-charts.bar({ data: quarterlyRevenue, colorByBar: true });
-
-// Donut with showLabels
-charts.donut({
-  data: [{label:"Used",value:67},{label:"Free",value:33}],
-  showLabels: true,
+// Logarithmic axis (orders-of-magnitude data)
+charts.line({
+  series: [{ data: signal }],
+  yAxis: { scale: "log", minorTicks: true, label: "Intensity" },
 });
 
-// Sparkline with last-point marker
-charts.sparkline({ data: weeklyVisitors, showLast: true });
+// Step plot for discrete data
+charts.line({ series: [{ data: censusData }], step: "before" });
+
+// Histogram of a sample
+charts.histogram({ data: observations, bins: 30, title: "n=1000" });
+
+// Box plot — distribution per group
+charts.boxplot({
+  groups: classes.map(c => ({ label: c.name, values: c.scores })),
+  colorByBox: true,
+});
+
+// Bar with value labels + target reference
+charts.bar({
+  title: "Quarterly Revenue",
+  data: quarterlyRevenue,
+  yAxis: { format: v => `€${v}k` },
+  references: [{ value: 200, label: "Target" }],
+  showValues: true,
+});
+
+// Sparkline with min/max + last-point dots
+charts.sparkline({ data: weeklyVisitors, showMinMax: true, showLast: true });
 ```
 
 ### Styling
@@ -747,16 +810,23 @@ Charts ship with embedded default CSS. Override via:
    ```css
    .stdlib-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
    ```
-3. `currentColor` is used for axes / tick labels / sparklines — set parent
-   `color` to retheme (dark mode "just works").
+3. `currentColor` for axes, tick labels, error bars, references, sparklines —
+   set parent `color` for theming (dark mode "just works").
+4. Font is inherited from the surrounding HTML — the app's font auto-applies.
 
 Pass `className` to scope per-instance styles.
 
 **Gotchas:**
 - All chart functions return SVG strings, not DOM nodes — caller injects via `innerHTML` or writes to disk.
-- Embedded `<style>` block lists `.stdlib-chart-series-N` rules BEFORE shape-specific rules so shape rules (`fill: none` on line, `stroke: white` on slice/point) win on specificity tie.
+- Embedded `<style>` block lists `.stdlib-chart-series-N` rules BEFORE shape-specific rules so shape rules (`fill: none` on line, `stroke: white` on slice/point, `stroke: none` on legend label) win on specificity tie.
 - Empty data renders an empty-state SVG with `.stdlib-chart-empty-text` — except sparkline, which renders a stable-size empty SVG (no text, preserves inline layout).
 - NaN / Infinity values are filtered, never crash.
+- `bar` with `scale: "log"` skips non-positive values silently (log can't represent zero / negatives).
+- Step plot (`step` option) takes precedence over `smooth` — they don't combine.
+- `legend` on bar is silently ignored when `colorByBar` is false (single-color bars need no legend).
+- `histogram` uses Sturges' formula by default for bin count; pass an array of edges for explicit bins.
+- `boxplot` uses R-7 (linear interpolation) for quartiles and Tukey's 1.5×IQR rule for whiskers/outliers.
+- Sparkline reserves a wider edge inset (~3px) when `showLast`/`showMinMax` is set so dots aren't clipped at the viewBox boundary.
 - `bar` always includes 0 in the y-domain so bars rest on a visible baseline. Negative values produce bars below the zero line; mixed pos/neg renders an explicit zero line.
 - `pie` filters non-positive values entirely (no zero-sized slices). 100% single-slice renders a full circle (path uses two 180° arcs since a single SVG `A` command can't draw a complete circle unambiguously).
 - `line` and `sparkline` smooth curves use Catmull-Rom→Bezier with tension factor 1/6 (standard, no overshoot for typical UI data). Pass `smooth: false` for straight segments.

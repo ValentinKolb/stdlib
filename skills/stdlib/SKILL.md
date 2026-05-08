@@ -89,8 +89,8 @@ sub-paths.
 | Pretty-print byte sizes (IEC/SI, locale-aware, value/unit split) | `text.pprintBytes`, `text.pprintBytesParts` | core |
 | Fuzzy-match a query against a string (UI search, command palette) | `fuzzy.match`, `fuzzy.filter`, `fuzzy.segments` | core |
 | Find the closest typo correction in a list of choices | `fuzzy.distance`, `fuzzy.closest` | core |
-| Generate SVG charts (scatter, line, bar, pie, donut) | `charts.scatter/line/bar/pie/donut` | core |
-| Generate a minimalist inline sparkline | `charts.sparkline` | core |
+| Generate SVG charts (scatter, line, bar, pie, donut, histogram, box plot) with titles, references, legends, error bars, log scale, trend lines | `charts.scatter/line/bar/pie/donut/histogram/boxplot` | core |
+| Generate a minimalist inline sparkline (with optional smooth, min/max, last-point dots) | `charts.sparkline` | core |
 | Get a file icon/category | `fileicons.getFileCategory/getFileIcon` | core |
 | Get gradient presets for names | `gradients.gradientPresets` | core |
 
