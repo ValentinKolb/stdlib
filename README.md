@@ -70,6 +70,68 @@ if (user) {
 const query = searchParams.serialize({ page: 1, active: true });
 ```
 
+### Command Palette with Highlighted Matches
+
+```typescript
+import { fuzzy } from "@valentinkolb/stdlib";
+
+const commands = [
+  { id: "open-file", label: "Open File" },
+  { id: "save-doc", label: "Save Document" },
+  { id: "user-settings", label: "User Settings" },
+  // ... hundreds more
+];
+
+// Rank by fuzzy match, take top 10
+const hits = fuzzy.filter("uss", commands, { key: c => c.label, limit: 10 });
+
+// Render with <mark>-highlighted matched characters
+for (const hit of hits) {
+  const html = fuzzy.segments(hit.target, hit.ranges)
+    .map(s => s.match ? `<mark>${s.text}</mark>` : s.text)
+    .join("");
+  // for "User Settings": "<mark>Us</mark>er <mark>S</mark>ettings"
+}
+
+// Did-you-mean typo correction
+fuzzy.closest("primry", ["primary", "secondary", "tertiary"]);
+// { value: "primary", distance: 1, similarity: 0.86 }
+```
+
+### Dashboard with Inline SVG Charts
+
+```typescript
+import { charts } from "@valentinkolb/stdlib";
+
+// Bar chart with title, value labels, target reference, formatted axis
+const revenue = charts.bar({
+  title: "Quarterly Revenue",
+  data: [
+    { label: "Q1", value: 124 }, { label: "Q2", value: 187 },
+    { label: "Q3", value: 162 }, { label: "Q4", value: 215 },
+  ],
+  yAxis: { format: v => `€${v}k` },
+  references: [{ value: 200, label: "Target" }],
+  showValues: true,
+});
+
+// Inline sparkline for a metric-row trend indicator
+const trend = charts.sparkline({
+  data: weeklyVisitors,
+  smooth: true, showMinMax: true, showLast: true,
+});
+
+// Scientific scatter with error bars and linear-regression overlay
+const correlation = charts.scatter({
+  series: [{ data: trials.map(t => ({ x: t.id, y: t.mean, errY: t.sd })) }],
+  trendline: true,
+  yAxis: { label: "Reaction (ms ± σ)" },
+});
+
+// All functions return SVG strings — inject via innerHTML or write to disk
+document.getElementById("revenue").innerHTML = revenue;
+```
+
 ### Interactive SolidJS Editor
 
 ```typescript
@@ -89,14 +151,17 @@ hotkeys.create({
 });
 ```
 
-*These examples combine a few of the 29+ modules available across three entry points -- see the [full documentation](./docs/) for the complete API.*
+*These examples combine a few of the 30+ modules available across four entry points -- see the [full documentation](./docs/) for the complete API.*
 
 ## Documentation
 
 ```
-docs/core.md      -- encoding, crypto, password, dates, text, cache, result, qr, svg, streaming, ...
+docs/core.md      -- encoding, crypto, password, dates, text, fuzzy, charts, cache, result, svg, streaming, ...
 docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store, theme
 docs/solid.md     -- mutation, hotkeys, dnd, timed, localstorage, ...
+
+# qr lives behind its own subpath because lean-qr is an optional peer dep
+import { qr } from "@valentinkolb/stdlib/qr";
 ```
 
 ## Agent Skills
