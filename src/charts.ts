@@ -317,10 +317,20 @@ export const niceLogTicks = (
 ): { domain: [number, number]; ticks: number[] } => {
   const safeMin = Math.max(min, 1e-300);
   const safeMax = Math.max(max, safeMin);
-  const lo = Math.pow(10, Math.floor(Math.log10(safeMin)));
-  const hi = Math.pow(10, Math.ceil(Math.log10(safeMax)));
+  // Clamp the log-tick range to a finite, SVG-safe span so callers passing
+  // Number.MAX_VALUE (or non-finite extremes) don't trigger an infinite loop.
+  // 1e-30 .. 1e30 covers every real-world scientific magnitude.
+  const MIN_EXP = -30;
+  const MAX_EXP = 30;
+  const loExp = Math.max(MIN_EXP, Math.floor(Math.log10(safeMin)));
+  const hiExp = Math.min(MAX_EXP, Math.ceil(Math.log10(safeMax)));
+  const lo = Math.pow(10, loExp);
+  const hi = Math.pow(10, Math.max(loExp, hiExp));
   const ticks: number[] = [];
-  for (let p = lo; p <= hi * 1.0001; p *= 10) ticks.push(p);
+  // Iterate by exponent to avoid floating-point drift at extreme ranges.
+  for (let e = loExp; e <= Math.max(loExp, hiExp); e++) {
+    ticks.push(Math.pow(10, e));
+  }
   return { domain: [lo, hi], ticks };
 };
 
@@ -440,18 +450,40 @@ export const autoBin = (
   const finite = values.filter((v) => Number.isFinite(v));
   if (finite.length === 0) return { edges: [0, 1], counts: [0] };
 
+  // Cap bin count so a malicious / mistyped `bins: 1e9` doesn't allocate
+  // gigabytes. 1024 is generous: 30 is Sturges' for 1e9 samples.
+  const MAX_BINS = 1024;
+
   let edges: number[];
   if (Array.isArray(bins)) {
-    edges = [...(bins as number[])].sort((a, b) => a - b);
-    if (edges.length < 2) edges = [edges[0]!, edges[0]! + 1];
+    const sorted = [...(bins as number[])]
+      .filter((e) => Number.isFinite(e))
+      .sort((a, b) => a - b);
+    if (sorted.length >= 2) {
+      edges = sorted;
+    } else {
+      // Empty or single-edge input → fall back to a single auto-bin span over
+      // the data so we never emit `[undefined, NaN]` edges.
+      const dmin = Math.min(...finite);
+      const dmax = Math.max(...finite);
+      edges = dmin === dmax ? [dmin - 0.5, dmin + 0.5] : [dmin, dmax];
+    }
   } else {
-    const min = Math.min(...finite);
-    const max = Math.max(...finite);
+    // Single-loop min/max — `Math.min(...arr)` fails with RangeError on huge
+    // arrays (call-stack overflow) and is also O(n) anyway.
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of finite) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
     const range = max - min;
-    const k =
-      typeof bins === "number" && bins > 0
-        ? Math.floor(bins)
-        : Math.max(1, Math.ceil(Math.log2(finite.length)) + 1);
+    let k: number;
+    if (typeof bins === "number" && bins > 0) {
+      k = Math.min(MAX_BINS, Math.floor(bins));
+    } else {
+      k = Math.max(1, Math.min(MAX_BINS, Math.ceil(Math.log2(finite.length)) + 1));
+    }
     if (range === 0) {
       edges = [min - 0.5, min + 0.5];
     } else {
@@ -934,6 +966,14 @@ const pickMapper = (scale: "linear" | "log") =>
   scale === "log" ? mapLog : mapRange;
 
 /**
+ * Whether a value is renderable on the given axis. Log axes reject zero and
+ * negative values (since `log(<=0)` is undefined). Used to filter data
+ * points before rendering so we don't emit huge off-plot SVG coordinates.
+ */
+const isOnAxis = (axis: { scale: "linear" | "log" }, v: number): boolean =>
+  Number.isFinite(v) && (axis.scale !== "log" || v > 0);
+
+/**
  * Compute the domain, major ticks, and (optional) minor ticks for an axis,
  * choosing linear or log scale per `axisOpts`. Filters non-positive values
  * out under log scale and falls back to `[1, 10]` if none remain.
@@ -1207,7 +1247,7 @@ export const scatter = (opts: ScatterOptions): string => {
       s.marker ??
       (opts.autoVariant ? DEFAULT_MARKERS[i % DEFAULT_MARKERS.length]! : "circle");
     const elements = s.data
-      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+      .filter((p) => isOnAxis(xAxis, p.x) && isOnAxis(yAxis, p.y))
       .map((p) => {
         const cx = xMap(p.x, xAxis.domain, [area.x0, area.x1]);
         const cy = yMap(p.y, yAxis.domain, [area.y1, area.y0]);
@@ -1336,7 +1376,7 @@ export const line = (opts: LineOptions): string => {
 
   opts.series.forEach((s, i) => {
     const finite = s.data.filter(
-      (p) => Number.isFinite(p.x) && Number.isFinite(p.y),
+      (p) => isOnAxis(xAxis, p.x) && isOnAxis(yAxis, p.y),
     );
     if (finite.length < 2) return;
     const sorted = [...finite].sort((a, b) => a.x - b.x);
@@ -1902,9 +1942,11 @@ type SparklineOptions = {
 const normalizeSparklineData = (data: number[] | Point[]): Point[] => {
   if (data.length === 0) return [];
   if (typeof data[0] === "number") {
+    // Assign x BEFORE filtering so a NaN/Infinity gap in the middle stays a
+    // gap in the indices (don't pretend index N+1 came right after N-1).
     return (data as number[])
-      .filter((y) => Number.isFinite(y))
-      .map((y, x) => ({ x, y }));
+      .map((y, x) => ({ x, y }))
+      .filter((p) => Number.isFinite(p.y));
   }
   return (data as Point[]).filter(
     (p) => Number.isFinite(p.x) && Number.isFinite(p.y),

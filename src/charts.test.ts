@@ -1617,6 +1617,80 @@ describe("niceLogTicks", () => {
     const r = niceLogTicks(1, 100);
     expect(r.ticks).toEqual([1, 10, 100]);
   });
+
+  it("returns finite ticks for Number.MAX_VALUE without infinite-looping", () => {
+    const start = performance.now();
+    const r = niceLogTicks(1, Number.MAX_VALUE);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(50); // was infinite loop before fix
+    expect(r.ticks.length).toBeGreaterThan(0);
+    expect(r.ticks.every((t) => Number.isFinite(t))).toBe(true);
+  });
+
+  it("clamps to a finite span when given absurd inputs", () => {
+    const r = niceLogTicks(1e-100, 1e100);
+    expect(r.ticks.every((t) => Number.isFinite(t) && t > 0)).toBe(true);
+    expect(r.ticks.length).toBeLessThan(100);
+  });
+});
+
+describe("autoBin (regression)", () => {
+  it("does not OOM on bins: 1e9 — caps internally", () => {
+    const r = autoBin([1, 2, 3], 1_000_000_000);
+    expect(r.counts.length).toBeLessThan(2000); // capped
+  });
+
+  it("falls back to data span for empty edges array", () => {
+    const r = autoBin([1, 5, 9], []);
+    expect(r.counts.length).toBeGreaterThan(0);
+    expect(r.edges.every((e) => Number.isFinite(e))).toBe(true);
+  });
+
+  it("does not RangeError on huge inputs", () => {
+    const big = Array.from({ length: 200_000 }, (_, i) => i);
+    expect(() => autoBin(big, 50)).not.toThrow();
+  });
+});
+
+describe("scatter — log axis filters non-positive points", () => {
+  it("scatter with yAxis.scale: 'log' drops y <= 0 points before rendering", () => {
+    const svg = scatter({
+      series: [{ data: [{ x: 1, y: 1 }, { x: 2, y: -5 }, { x: 3, y: 100 }] }],
+      yAxis: { scale: "log" },
+    });
+    // Two valid points (y=1, y=100), one filtered (y=-5). Only 2 circles.
+    expect(count(svg, "<circle")).toBe(2);
+  });
+});
+
+describe("line — log axis filters non-positive points", () => {
+  it("line with yAxis.scale: 'log' drops y <= 0 points before path", () => {
+    const svg = line({
+      series: [{ data: [{ x: 1, y: 1 }, { x: 2, y: 0 }, { x: 3, y: 10 }, { x: 4, y: 100 }] }],
+      yAxis: { scale: "log" },
+    });
+    // Path has 3 valid points (y=1,10,100); y=0 filtered.
+    const path = /<path class="stdlib-chart-line[^"]*" d="([^"]+)"/.exec(svg)![1]!;
+    // Path commands present; coordinates finite.
+    expect(path).toMatch(/[ML]/);
+    expect(path).not.toContain("Infinity");
+    expect(path).not.toContain("NaN");
+  });
+});
+
+describe("sparkline — preserves index gaps for NaN values", () => {
+  it("data: [10, NaN, 30] → 2 valid points at x=0 and x=2 (not 0 and 1)", () => {
+    const svg = sparkline({ data: [10, NaN, 30], smooth: false });
+    // The sparkline uses an internal x-domain [0,2] so the visible x of the
+    // second valid point is at the right edge, NOT the middle.
+    const path = /<path class="stdlib-chart-sparkline" d="([^"]+)"/.exec(svg)![1]!;
+    // Two L commands: M, L for one segment.
+    expect(count(path, " L ")).toBe(1);
+    // Last x should be near the right edge (~78.5 for default width 80, inset 1.5).
+    const lastL = /L ([0-9.]+) /.exec(path);
+    expect(lastL).not.toBeNull();
+    expect(parseFloat(lastL![1]!)).toBeGreaterThan(70);
+  });
 });
 
 describe("charts.line — log scale", () => {
