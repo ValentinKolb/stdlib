@@ -161,8 +161,18 @@ export const err = {
  * @returns Object with normalized `page`, `perPage`, and computed `offset`
  */
 export const paginate = (params?: PageParams) => {
-  const page = Math.max(1, params?.page ?? 1);
-  const perPage = Math.max(1, params?.perPage ?? 20);
+  // Accept any input but coerce defensively. NaN, Infinity, fractional, and
+  // negative inputs were previously passed through to (page-1)*perPage,
+  // producing offsets like NaN or Infinity that downstream SQL drivers
+  // either rejected loudly or — worse — used to issue full-table scans.
+  const MAX_PER_PAGE = 1000;
+  const safe = (v: unknown, fallback: number): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.floor(n);
+  };
+  const page = Math.max(1, safe(params?.page, 1));
+  const perPage = Math.min(MAX_PER_PAGE, Math.max(1, safe(params?.perPage, 20)));
   return { page, perPage, offset: (page - 1) * perPage };
 };
 
@@ -222,7 +232,19 @@ export const tryCatch = async <T>(fn: () => Promise<T>, onError?: (error: unknow
     return ok(await fn());
   } catch (error) {
     if (isServiceError(error)) return fail(error);
-    const mapped = onError?.(error) ?? err.internal(error instanceof Error ? error.message : String(error));
-    return fail(mapped);
+    if (onError) {
+      try {
+        return fail(onError(error));
+      } catch (mapErr) {
+        // onError itself threw — fall back to a generic internal error so the
+        // documented "never throws" contract holds even during error mapping.
+        console.error("tryCatch: onError threw while mapping", mapErr);
+        return fail(err.internal("internal error"));
+      }
+    }
+    // Default: pass through the underlying error message. Note: this can
+    // leak infrastructure detail (SQL strings, file paths) to clients —
+    // pass an explicit `onError` mapper to redact in security-sensitive contexts.
+    return fail(err.internal(error instanceof Error ? error.message : String(error)));
   }
 };

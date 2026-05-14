@@ -53,12 +53,21 @@ export async function* parseSSE(
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Normalize CRLF and CR to LF
-      buffer = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      // Normalize CRLF → LF first.
+      buffer = buffer.replace(/\r\n/g, "\n");
+      // A trailing bare \r might be the first half of a CRLF whose \n is in
+      // the next chunk. Hold it back so we don't dispatch the line early.
+      let trailingCR = "";
+      if (buffer.endsWith("\r")) {
+        trailingCR = "\r";
+        buffer = buffer.slice(0, -1);
+      }
+      // Mid-buffer bare \r is a legitimate line separator per the spec.
+      buffer = buffer.replace(/\r/g, "\n");
 
       const lines = buffer.split("\n");
-      // Last element may be an incomplete line — keep it in the buffer
-      buffer = lines.pop()!;
+      // Last element may be an incomplete line — keep it in the buffer.
+      buffer = lines.pop()! + trailingCR;
 
       for (const line of lines) {
         // Empty line = dispatch event

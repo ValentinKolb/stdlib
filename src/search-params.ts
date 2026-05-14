@@ -66,14 +66,24 @@ const shouldRemoveParam = (value: any): boolean =>
  * const params = searchParams.deserialize<{ page: number; active: boolean; name: string }>();
  * // { page: 2, active: true, name: "John" }
  */
+/**
+ * Keys that, if assigned via square-bracket access on a plain object, would
+ * mutate the object's prototype chain or expose other internals. Filtered
+ * defensively so a hostile query string cannot poison the prototype.
+ */
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 export const deserialize = <T extends Record<string, any>>(
   params?: URLSearchParams,
 ): MakeOptionalUndefined<T> => {
   const searchParams =
     params || new URLSearchParams(globalThis?.location?.search || "");
-  const result: any = {};
+  // `Object.create(null)` keeps assignment from triggering prototype setters
+  // even if a future caller forgets the FORBIDDEN_KEYS check.
+  const result: any = Object.create(null);
 
   for (const [key, value] of searchParams) {
+    if (FORBIDDEN_KEYS.has(key)) continue;
     if (value === "true") {
       result[key] = true;
     } else if (value === "false") {

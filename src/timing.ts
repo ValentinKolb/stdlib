@@ -69,30 +69,42 @@ export const buffer = <T>(
 ): ((key: string, data: T) => void) => {
   const cache = new Map<string, T>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Per-key write counter. The flush snapshots the counter at fire time and
+  // only clears `cache` if no newer write came in during the async fn.
+  const seq = new Map<string, number>();
 
   return (key: string, data: T) => {
     cache.set(key, data);
-
+    seq.set(key, (seq.get(key) ?? 0) + 1);
     if (timers.has(key)) return;
 
     timers.set(
       key,
       setTimeout(() => {
-        const latest = cache.get(key);
-        if (latest === undefined) return;
+        // Always free the timer slot first so the NEXT write can schedule
+        // its own timer (this prevents the `buffer("k", undefined)` deadlock
+        // and is also part of the in-flight-write race fix).
+        timers.delete(key);
+        if (!cache.has(key)) return;
+        const latest = cache.get(key) as T;
+        const seqAtFire = seq.get(key)!;
 
-        const flush = async () => {
+        void (async () => {
           try {
             await fn(key, latest);
-            cache.delete(key);
           } catch (e) {
             console.error(`buffer flush failed for key "${key}":`, e);
           } finally {
-            timers.delete(key);
+            // Only clear cache if no new write arrived during the flush. If
+            // a newer write is queued, that write already scheduled a fresh
+            // timer (since `timers` was cleared at flush start), so leaving
+            // the cache populated lets that timer pick up the newer value.
+            if (seq.get(key) === seqAtFire) {
+              cache.delete(key);
+              seq.delete(key);
+            }
           }
-        };
-
-        void flush();
+        })();
       }, intervalMs),
     );
   };

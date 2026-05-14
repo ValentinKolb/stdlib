@@ -242,4 +242,50 @@ describe("tryCatch", () => {
     const result = await tryCatch(() => { throw 42; });
     if (!result.ok) expect(result.error.message).toContain("42");
   });
+
+  // Regression: onError throwing must not break the never-throws contract.
+  it("never throws even when onError itself throws", async () => {
+    const result = await tryCatch(
+      async () => {
+        throw new Error("boom");
+      },
+      () => {
+        throw new Error("mapping crashed");
+      },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INTERNAL");
+    }
+  });
+});
+
+// ==========================
+// paginate (regression)
+// ==========================
+
+describe("paginate (regression)", () => {
+  it("coerces NaN/Infinity to defaults", () => {
+    const r = paginate({ page: NaN as any, perPage: Infinity as any });
+    expect(Number.isFinite(r.page)).toBe(true);
+    expect(Number.isFinite(r.perPage)).toBe(true);
+    expect(Number.isFinite(r.offset)).toBe(true);
+  });
+
+  it("clamps oversize perPage to a sane maximum", () => {
+    const r = paginate({ page: 1, perPage: 1_000_000 });
+    expect(r.perPage).toBeLessThanOrEqual(1000);
+  });
+
+  it("floors fractional values", () => {
+    const r = paginate({ page: 2.7, perPage: 10.9 });
+    expect(r.page).toBe(2);
+    expect(r.perPage).toBe(10);
+  });
+
+  it("rejects negative values via Math.max(1, ...)", () => {
+    const r = paginate({ page: -5, perPage: -10 });
+    expect(r.page).toBe(1);
+    expect(r.perPage).toBe(1);
+  });
 });

@@ -141,20 +141,43 @@ const computeMatch = (
   if (qLen === 0) return { score: 0, ranges: [] };
   if (tLen < qLen) return null;
 
+  // Use `toLowerCase()` for case-insensitive matching so non-ASCII letters
+  // fold correctly (`É` → `é`, etc.) — the previous `c + 32` trick only
+  // worked for A-Z. We then fall back to charCodeAt on the folded strings.
+  // Note: a few locale-specific lowercases change string length (rare); if
+  // they do we keep the original char-codes for matching, which is still
+  // correct for ASCII and most BMP scripts.
+  const qFoldStr = caseSensitive ? query : query.toLowerCase();
+  const tFoldStr = caseSensitive ? target : target.toLowerCase();
+  const qFoldUsable = qFoldStr.length === qLen;
+  const tFoldUsable = tFoldStr.length === tLen;
+
   // Pre-compute char codes (folded for matching, original for case bonus).
   const qOrig = new Uint16Array(qLen);
   const qFold = new Uint16Array(qLen);
   for (let i = 0; i < qLen; i++) {
     const c = query.charCodeAt(i);
     qOrig[i] = c;
-    qFold[i] = caseSensitive ? c : isUpper(c) ? c + 32 : c;
+    qFold[i] = caseSensitive
+      ? c
+      : qFoldUsable
+        ? qFoldStr.charCodeAt(i)
+        : isUpper(c)
+          ? c + 32
+          : c;
   }
   const tOrig = new Uint16Array(tLen);
   const tFold = new Uint16Array(tLen);
   for (let j = 0; j < tLen; j++) {
     const c = target.charCodeAt(j);
     tOrig[j] = c;
-    tFold[j] = caseSensitive ? c : isUpper(c) ? c + 32 : c;
+    tFold[j] = caseSensitive
+      ? c
+      : tFoldUsable
+        ? tFoldStr.charCodeAt(j)
+        : isUpper(c)
+          ? c + 32
+          : c;
   }
 
   // Subsequence pre-check: if q is not even a subsequence of t, bail out fast.
@@ -367,6 +390,14 @@ export const filter = <T>(
   const hits: Array<FuzzyHit<T>> = [];
   for (const item of items) {
     const target = getTarget(item);
+    // Defensive: without a `key` accessor, callers passing non-string items
+    // would silently crash inside computeMatch. Throw a clear error early.
+    if (typeof target !== "string") {
+      throw new TypeError(
+        `fuzzy.filter: target is not a string (got ${typeof target}). ` +
+          "Pass a `key` accessor to extract a string from each item.",
+      );
+    }
     const m = computeMatch(query, target, caseSensitive);
     if (m !== null) {
       hits.push({ item, target, score: m.score, ranges: m.ranges });

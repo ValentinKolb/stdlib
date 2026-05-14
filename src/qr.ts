@@ -99,7 +99,14 @@ const escapeWifi = (s: string): string => s.replace(/([\\;,:"'`])/g, "\\$1");
  * @returns Escaped string safe for vCard payloads
  */
 const escapeVCard = (s: string): string =>
-  s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  s
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    // Both CR and LF must be escaped; otherwise a value like
+    // "John\rEMAIL:evil@example.com" injects a fake EMAIL field into the
+    // vCard / iCalendar payload.
+    .replace(/\r\n|\r|\n/g, "\\n");
 
 /**
  * Converts an HTML `datetime-local` value to iCalendar VEVENT date-time format.

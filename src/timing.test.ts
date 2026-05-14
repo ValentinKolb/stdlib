@@ -300,3 +300,47 @@ describe("throttle", () => {
     expect(count).toBe(1); // trailing was cancelled
   });
 });
+
+// ==========================
+// buffer — race + undefined regression
+// ==========================
+
+describe("buffer (regression)", () => {
+  it("preserves a write that arrives during an in-flight flush", async () => {
+    const writes: Array<[string, number]> = [];
+    let firstFlushResolve: (() => void) | null = null;
+    const fn = mock(async (k: string, v: number) => {
+      writes.push([k, v]);
+      // First flush hangs until released so we can sneak in a second write.
+      if (writes.length === 1) {
+        await new Promise<void>((r) => (firstFlushResolve = r));
+      }
+    });
+    const buffered = buffer<number>(fn, 10);
+    buffered("k", 1);
+    await Bun.sleep(20); // flush triggers, fn(k,1) starts but blocks
+    buffered("k", 2); // arrives while flush in-flight; schedules new timer
+    await Bun.sleep(5);
+    firstFlushResolve!(); // release first flush
+    await Bun.sleep(40); // second timer fires
+    expect(writes).toEqual([
+      ["k", 1],
+      ["k", 2],
+    ]);
+  });
+
+  it("does not deadlock on undefined values", async () => {
+    const fn = mock(async () => {});
+    const buffered = buffer<number | undefined>(fn, 10);
+    buffered("k", undefined as unknown as number);
+    await Bun.sleep(25);
+    // Even though latest is undefined, the timer slot must be released so a
+    // future write can register a new timer (was previously deadlocked).
+    buffered("k", 42);
+    await Bun.sleep(25);
+    expect(fn).toHaveBeenCalled();
+    // The most recent call should be (k, 42).
+    const lastCall = (fn.mock.calls as unknown as [string, number][]).at(-1)!;
+    expect(lastCall[1]).toBe(42);
+  });
+});

@@ -70,6 +70,34 @@ export function fromBase64(base64: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * Strict variant of {@link fromBase64} that validates input format before
+ * decoding. Throws `TypeError` for invalid characters, wrong length,
+ * misplaced padding, or stray data after `=`.
+ *
+ * Use this when the input is untrusted (e.g. user-supplied) and you want
+ * cross-runtime parity — Node.js / Bun's `Buffer.from(s, "base64")` silently
+ * accepts garbage that browsers' `atob` rejects.
+ *
+ * @example
+ * fromBase64Strict("SGVsbG8="); // valid → Uint8Array of "Hello"
+ * fromBase64Strict("SGVsbG8=!"); // throws TypeError
+ */
+export function fromBase64Strict(base64: string): Uint8Array {
+  // Allow standard or URL-safe alphabet, with optional `=` padding only at
+  // the end. Reject any other characters (whitespace included).
+  if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(base64)) {
+    throw new TypeError("fromBase64Strict: invalid Base64 input");
+  }
+  // Length must be a multiple of 4 once padding is counted.
+  if (base64.length % 4 !== 0) {
+    throw new TypeError("fromBase64Strict: input length is not a multiple of 4");
+  }
+  // Normalize URL-safe alphabet so the underlying decoder accepts it.
+  const standard = base64.replace(/-/g, "+").replace(/_/g, "/");
+  return fromBase64(standard);
+}
+
 //====================================
 // HEX
 //====================================
@@ -230,6 +258,7 @@ export const fromBase62 = (str: string): number => {
  * Each function is also available as a named export.
  */
 export const encoding = {
+  fromBase64Strict,
   toBase64,
   fromBase64,
   toHex,

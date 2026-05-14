@@ -49,6 +49,19 @@ describe("searchParams.deserialize", () => {
     const result = searchParams.deserialize(new URLSearchParams("q=  "));
     expect(result.q).toBe("  ");
   });
+
+  // Regression: __proto__ and friends must NOT pollute the prototype.
+  it("ignores __proto__, constructor, prototype keys (no prototype pollution)", () => {
+    const result = searchParams.deserialize(
+      new URLSearchParams('__proto__={"isAdmin":true}&constructor=evil&prototype=x'),
+    );
+    // Forbidden keys never set on the result.
+    expect((result as any).__proto__).not.toEqual({ isAdmin: true });
+    expect((result as any).constructor).not.toBe("evil");
+    // No prototype pollution: a fresh object should not inherit isAdmin.
+    const fresh: any = {};
+    expect(fresh.isAdmin).toBeUndefined();
+  });
 });
 
 // ==========================

@@ -623,3 +623,29 @@ describe("fuzzy — performance", () => {
     expect(elapsed).toBeLessThan(200);
   });
 });
+
+// =====================================================================
+// Regression: defensive guards
+// =====================================================================
+
+describe("filter — non-string items without key", () => {
+  it("throws a clear TypeError when items aren't strings and no key is given", () => {
+    expect(() =>
+      filter("a", [1, 2, 3] as unknown as string[], {}),
+    ).toThrow(TypeError);
+  });
+
+  it("works correctly with explicit key accessor", () => {
+    const items = [{ name: "alpha" }, { name: "beta" }, { name: "atlas" }];
+    const hits = filter("a", items, { key: (i) => i.name });
+    expect(hits.length).toBeGreaterThan(0);
+  });
+});
+
+describe("match — non-ASCII case folding", () => {
+  it("matches accented uppercase against accented lowercase", () => {
+    // The c+32 trick only worked for A-Z; "É" → "é" requires toLowerCase.
+    const r = match("é", "École");
+    expect(r).not.toBeNull();
+  });
+});

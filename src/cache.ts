@@ -139,16 +139,34 @@ export const createCache = <T>(options?: CacheOptions<T>): Cache<T> => {
     }
   };
 
+  // setTimeout in Node/Bun clamps delays > ~24.8 days (2^31 ms) to 1ms.
+  // Cap our TTL-based timers at this maximum and re-schedule when the entry
+  // is actually due to expire (typically far in the future, so single-step
+  // re-scheduling is fine).
+  const MAX_TIMEOUT_MS = 0x7fffffff;
   const scheduleExpiry = (key: string): void => {
     const existing = timers.get(key);
     if (existing) clearTimeout(existing);
-    timers.set(
-      key,
-      setTimeout(() => {
-        timers.delete(key);
-        purge(key);
-      }, ttl),
-    );
+    const entry = store.get(key);
+    if (!entry) return;
+    const remaining = Math.max(0, entry.expires - Date.now());
+    const delay = Math.min(remaining, MAX_TIMEOUT_MS);
+    const handle = setTimeout(() => {
+      timers.delete(key);
+      const e = store.get(key);
+      if (!e) return;
+      if (e.expires > Date.now()) {
+        // Hit the 24.8-day cap before the real expiry; re-schedule.
+        scheduleExpiry(key);
+        return;
+      }
+      purge(key);
+    }, delay);
+    // Don't keep a Node/Bun process alive just because a cache entry exists.
+    if (typeof (handle as any).unref === "function") {
+      (handle as any).unref();
+    }
+    timers.set(key, handle);
   };
 
   const get = async (key: string): Promise<T | null> => {
@@ -158,14 +176,11 @@ export const createCache = <T>(options?: CacheOptions<T>): Cache<T> => {
       return entry.value;
     }
 
-    // Remove expired entry
+    // Remove expired entry — run beforePurge so resource-backed values get
+    // their cleanup hook even when the timer didn't fire (e.g. event loop
+    // was blocked past the TTL).
     if (entry) {
-      store.delete(key);
-      const timer = timers.get(key);
-      if (timer) {
-        clearTimeout(timer);
-        timers.delete(key);
-      }
+      purge(key);
     }
 
     // Lazy loading via onMiss

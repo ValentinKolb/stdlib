@@ -1,5 +1,15 @@
 import { describe, it, expect } from "bun:test";
-import { toBase64, fromBase64, toHex, fromHex, toBase32, fromBase32, toBase62, fromBase62 } from "./encoding";
+import {
+  toBase64,
+  fromBase64,
+  fromBase64Strict,
+  toHex,
+  fromHex,
+  toBase32,
+  fromBase32,
+  toBase62,
+  fromBase62,
+} from "./encoding";
 
 // ==========================
 // Base64
@@ -128,4 +138,35 @@ describe("toBase62 / fromBase62", () => {
   it("pads to minLength", () => expect(toBase62(1, 5)).toBe("00001"));
   it("throws on negative", () => expect(() => toBase62(-1)).toThrow());
   it("throws on invalid char", () => expect(() => fromBase62("!!!")).toThrow());
+});
+
+// ==========================
+// fromBase64Strict — opt-in validation
+// ==========================
+
+describe("fromBase64Strict", () => {
+  it("decodes valid Base64 like fromBase64", () => {
+    expect(fromBase64Strict("SGVsbG8=")).toEqual(new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]));
+  });
+
+  it("decodes URL-safe alphabet", () => {
+    expect(fromBase64Strict("U2hlbGw_dGV4dA==")).toEqual(new Uint8Array([0x53, 0x68, 0x65, 0x6c, 0x6c, 0x3f, 0x74, 0x65, 0x78, 0x74]));
+  });
+
+  it("throws TypeError on invalid characters", () => {
+    expect(() => fromBase64Strict("SGVsbG8=!!!")).toThrow(TypeError);
+    expect(() => fromBase64Strict("SGVsbG8 ")).toThrow(TypeError);
+    expect(() => fromBase64Strict("hello world!")).toThrow(TypeError);
+  });
+
+  it("throws on wrong length (not multiple of 4)", () => {
+    expect(() => fromBase64Strict("abc")).toThrow(TypeError);
+    expect(() => fromBase64Strict("abcde")).toThrow(TypeError);
+  });
+
+  it("rejects garbage that lenient fromBase64 accepts in Bun/Node", () => {
+    // The lenient path silently decodes "SGVsbG8=!!!" to "Hello"; the strict
+    // variant matches the browser atob behavior of rejection.
+    expect(() => fromBase64Strict("SGVsbG8=!!!")).toThrow();
+  });
 });

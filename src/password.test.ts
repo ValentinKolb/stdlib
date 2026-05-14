@@ -210,4 +210,17 @@ describe("password.strength", () => {
     expect(s.crackTime).toBe("5 minutes");
     expect(s.feedback).toContain("Use more random words");
   });
+
+  // Regressions: tighten penalties for very-long-run sequences/repeats.
+  it("does not score 50-char single-character runs as very strong", () => {
+    const s = password.strength("a".repeat(48) + "A1!");
+    // Was 'very strong' (4) before fix. Should now be < 4.
+    expect(s.score).toBeLessThan(4);
+    expect(s.feedback.length).toBeGreaterThan(0);
+  });
+
+  it("does not score full-alphabet sequences as very strong", () => {
+    const s = password.strength("abcdefghijklmnopqrstuvwxyz123!");
+    expect(s.score).toBeLessThan(4);
+  });
 });

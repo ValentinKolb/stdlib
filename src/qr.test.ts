@@ -125,6 +125,17 @@ describe("qr.vcard", () => {
     const result = qr.vcard({ firstName: "J", city: "Berlin" });
     expect(result).toContain("ADR:");
   });
+
+  // Regression: \r in field values must not inject extra vCard fields.
+  it("escapes carriage returns to prevent field injection", () => {
+    const result = qr.vcard({
+      firstName: "John\rEMAIL:evil@example.com",
+    });
+    // The literal `EMAIL:evil@example.com` must not appear as a separate
+    // field — the \r must be backslash-escaped to \\n inside the FN value.
+    expect(result.split("\r\n").filter((l) => l.startsWith("EMAIL:"))).toEqual([]);
+    expect(result).toContain("\\n");
+  });
 });
 
 // ==========================

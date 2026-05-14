@@ -108,6 +108,20 @@ describe("parseSSE", () => {
 
     expect(events).toEqual([{ data: "nospace" }]);
   });
+
+  // Regression: CRLF split across chunk boundaries previously caused early
+  // dispatch because a trailing \r was eagerly normalized to \n.
+  it("does not dispatch when CRLF is split across chunks", async () => {
+    const stream = toStream(["data: one\r", "\nid: 2\n\n"]);
+    const events = await collect(parseSSE(stream));
+    expect(events).toEqual([{ data: "one", id: "2" }]);
+  });
+
+  it("preserves bare \\r as a line separator inside a chunk", async () => {
+    const stream = toStream(["data: a\rdata: b\n\n"]);
+    const events = await collect(parseSSE(stream));
+    expect(events).toEqual([{ data: "a\nb" }]);
+  });
 });
 
 // ==========================

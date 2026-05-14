@@ -351,16 +351,40 @@ const checkPasswordStrength = (pw: string): PasswordStrength => {
     }
   }
 
-  // Penalty: sequential characters
+  // Penalty: sequential characters. Cap was previously 0.5, allowing very
+  // long sequences like "abcdefghijklmnopqrstuvwxyz" to still score high.
+  // Hard-cap entropy when the sequence is long relative to overall length.
   const seqCount = countSequentialRuns(pw);
   if (seqCount > 0) {
-    entropy *= Math.max(0.5, 1 - seqCount * 0.1);
+    const seqRatio = seqCount / Math.max(pw.length, 1);
+    const seqCap = seqRatio > 0.6 ? 0.2 : seqRatio > 0.3 ? 0.4 : 0.5;
+    entropy *= Math.max(seqCap, 1 - seqCount * 0.1);
   }
 
-  // Penalty: repeated characters
+  // Penalty: repeated characters. Penalize based on the fraction of the
+  // password that is in long single-character runs — was previously a flat
+  // per-run multiplier that left "a".repeat(48)+"A1!" scoring as very strong.
   const repCount = countRepeatedRuns(pw);
+  let maxRunLen = 0;
+  {
+    let i = 0;
+    while (i < pw.length) {
+      let runLen = 1;
+      while (i + runLen < pw.length && pw[i + runLen] === pw[i]) runLen++;
+      if (runLen > maxRunLen) maxRunLen = runLen;
+      i += runLen;
+    }
+  }
   if (repCount > 0) {
-    entropy *= Math.max(0.5, 1 - repCount * 0.15);
+    const repRatio = repCount / Math.max(pw.length, 1);
+    const repCap = repRatio > 0.6 ? 0.2 : repRatio > 0.3 ? 0.4 : 0.5;
+    entropy *= Math.max(repCap, 1 - repCount * 0.15);
+  }
+  // Dominant single-character run: 50%+ of the password is one repeated char.
+  if (maxRunLen / Math.max(pw.length, 1) > 0.5) {
+    // Cap entropy at the score-2 boundary (60) so the password can never
+    // reach 'strong' or 'very strong' regardless of charset.
+    entropy = Math.min(entropy, 35);
   }
 
   entropy = Math.max(0, entropy);
