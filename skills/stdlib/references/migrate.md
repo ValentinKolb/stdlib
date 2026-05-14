@@ -1,0 +1,295 @@
+# Migration guide
+
+A growing reference document for coding agents and human developers upgrading
+between releases of `@valentinkolb/stdlib`. Each version section lists exactly
+what to change in consumer code, what to grep for, and concrete diff examples.
+
+When upgrading by more than one version, work through the sections in order
+(oldest → newest). Each section is independent.
+
+---
+
+## v0.7 → v0.8 (audit / non-breaking sweep)
+
+Released 2026-05-11. A comprehensive correctness + security audit. All API
+changes are **additive**; no existing call site needs to change to keep
+working. However, several silent-failure paths now throw loud errors that
+caller error handling may need to catch, and a handful of behaviors were
+corrected in observable ways. Use this section to find and review affected
+call sites.
+
+### TL;DR (1 minute scan)
+
+Grep your codebase for these patterns. If you find one, read the matching
+sub-section below.
+
+```bash
+# Crypto: forward `v` from sign() output through to verify()
+grep -rn "asymmetric\.sign\|asymmetric\.verify" src/
+
+# kvStore: surface previously-silent failures
+grep -rn "kvStore\.set\|kvStore\.clear\|kvStore" src/
+
+# Date URLs: parseCalendarDate now returns local-midnight
+grep -rn "parseCalendarDate\|formatDateKey\|getMonthGrid\|getDateRange" src/
+
+# Detail-panel: pushState by default
+grep -rn "detailPanel\.setUrlParam\|setUrlParam" src/
+
+# TOTP: throws on bad secret
+grep -rn "totp\.verify" src/
+
+# DnD CSS selectors: aria-grabbed is deprecated
+grep -rn "aria-grabbed" src/ styles/ public/
+
+# Untrusted Base64 input: opt into the strict decoder
+grep -rn "fromBase64\b" src/
+
+# Dropzone: text drags no longer trigger isDragging
+grep -rn "dropzone\.create" src/
+```
+
+### 1. `crypto.asymmetric.sign` returns a new `v: number` field
+
+**What changed:** `sign()` now returns `{ nonce, timestamp, signature, v: 2 }`.
+The `v` field signals which payload-serialization format was used. Existing
+destructuring (`const { signature, nonce, timestamp } = sig`) keeps working.
+
+**Why:** v1 used `${nonce}:${message}:${timestamp}` concatenation, which
+allowed a field-boundary attack where one signature could be re-interpreted
+with shifted field boundaries. v2 uses length-prefixed serialization.
+
+**What to change:** When forwarding the signature object to another service
+or storing it for later verification, include the `v` field. The recommended
+pattern is to spread the whole object:
+
+```ts
+// Before
+const sig = await crypto.asymmetric.sign({ privateKey, message });
+sendToServer({
+  signature: sig.signature,
+  nonce: sig.nonce,
+  timestamp: sig.timestamp,
+});
+
+// After
+const sig = await crypto.asymmetric.sign({ privateKey, message });
+sendToServer({ ...sig }); // include `v`
+```
+
+**Verification side:** With `v` forwarded, `verify()` uses v2-only and is
+immune to the field-boundary attack. Without `v`, verify falls back to
+trying both formats for backward compatibility — same security as v1.
+
+For new security-critical paths, also set `strict: true`:
+
+```ts
+const valid = await crypto.asymmetric.verify({
+  ...sig,            // includes v: 2
+  publicKey, message,
+  strict: true,      // rejects legacy v1 + high-S ECDSA signatures
+});
+```
+
+### 2. `crypto.asymmetric.verify` validates `maxAge`
+
+**What changed:** Passing `maxAge: NaN`, `Infinity`, or `<= 0` now throws
+`TypeError`. Previously these silently disabled the expiration check.
+
+**What to change:** Make sure `maxAge` comes from a validated source, or
+provide a finite fallback. Most call sites are unaffected because they use
+the default (no `maxAge` passed).
+
+### 3. `crypto.totp.verify` throws on malformed secret
+
+**What changed:** A malformed Base32 secret (typos, leftover whitespace,
+non-Base32 characters) now throws an error. Previously this was silently
+returned as `false`, indistinguishable from a wrong token.
+
+**What to change:** If you accept secrets from external sources (URL params,
+config files), wrap the call:
+
+```ts
+try {
+  const valid = await crypto.totp.verify({ token, secret });
+} catch (e) {
+  // Programmer error: malformed secret. Surface this as a configuration
+  // problem, not as "user entered wrong token".
+  console.error("Invalid TOTP secret format:", e);
+}
+```
+
+Also: `window` is now clamped to a max of 10 (RFC recommends 1). Passing
+larger values is silently capped. Negative or non-finite `window` throws.
+
+### 4. `kvStore.set(key, undefined)` throws
+
+**What changed:** Setting a top-level `undefined`, function, or symbol value
+now throws `TypeError`. Previously this left a corrupt half-state where
+`has(key)` was `true` but `get(key)` returned `undefined`.
+
+**What to change:** Use `kvStore.delete(key)` to remove an entry:
+
+```ts
+// Before (silently broken)
+await kvStore.set("config:flag", isEnabled || undefined);
+
+// After
+if (isEnabled) await kvStore.set("config:flag", true);
+else          await kvStore.delete("config:flag");
+```
+
+### 5. `kvStore` corrupt index now throws
+
+**What changed:** A corrupt on-disk index file now throws an Error on the
+first store access. Previously the store silently reset to empty, orphaning
+every existing blob in OPFS.
+
+**What to change:** If your app does anything important with kvStore, add a
+top-level error handler so corruption is visible rather than data-losing:
+
+```ts
+try {
+  const userData = await kvStore.get("user:current");
+} catch (e) {
+  if (String(e).includes("corrupt")) {
+    // Recovery flow: notify user, attempt re-init from canonical source.
+    await kvStore.clear();
+  } else {
+    throw e;
+  }
+}
+```
+
+### 6. `kvStore.destroy()` is a new public method
+
+**What changed:** New API to tear down module-level state + close the
+BroadcastChannel. Useful in tests (call in `afterEach`) and for explicit
+shutdown.
+
+**What to change:** Nothing required. Recommended addition in test setup:
+
+```ts
+afterEach(() => kvStore.destroy());
+```
+
+### 7. `kvStore.clear()` propagates non-NotFound errors
+
+**What changed:** Previously `clear()` swallowed all OPFS errors. Now only
+`NotFoundError` (the legitimate "already empty" case) is swallowed; quota
+errors, permission errors, etc. propagate.
+
+**What to change:** If your app routinely catches errors from operations
+near `clear()`, no change needed — those errors are now surfaced from
+`clear()` itself.
+
+### 8. `kvStore.set` / `setBytes` write-before-delete order
+
+**What changed:** Old blobs are deleted **after** the new value is durably
+written. Previously a quota-exceeded error during write left the previous
+value already deleted.
+
+**What to change:** Nothing — purely a correctness fix.
+
+### 9. `detailPanel.setUrlParam` now defaults to pushState
+
+**What changed:** Selecting items now creates Back/Forward history entries.
+Previously every selection silently replaced the current entry, breaking the
+documented URL-synced contract.
+
+**What to change:** If you have an explicit caller for the **initial** URL
+sync from query-params (where you don't want a history entry), add the new
+`mode` argument:
+
+```ts
+// On initial mount
+detailPanel.setUrlParam("user", initialUserId, "replace");
+
+// On user-driven selection (default — adds history entry)
+detailPanel.setUrlParam("user", selectedUserId);
+```
+
+### 10. `dates.parseCalendarDate` returns local-midnight
+
+**What changed:** Previously `parseCalendarDate("2025-03-05")` parsed as
+UTC midnight. In negative-offset timezones (e.g. America/Los_Angeles), the
+returned date's `.getDate()` was 4, not 5 — silently breaking calendar URLs
+throughout the Americas.
+
+Now: always returns local-midnight of the given calendar day.
+
+**What to change:** Nothing for correct call sites. Audit tests if you have
+hard-coded `new Date("2025-03-05")` (UTC) values being compared against
+`parseCalendarDate` output — those need to use local construction
+(`new Date(2025, 2, 5)`) to match.
+
+### 11. `dnd` — `aria-grabbed` is deprecated, use `data-dnd-active`
+
+**What changed:** `aria-grabbed` was removed from ARIA 1.2 and is ignored by
+modern screen readers. The library still emits it for backward compatibility
+but **also** now emits `data-dnd-active="true"/"false"` reactively. Future
+versions will remove `aria-grabbed` entirely.
+
+**What to change in CSS:**
+
+```css
+/* Before */
+[aria-grabbed="true"] { /* dragging state */ }
+
+/* After */
+[data-dnd-active="true"] { /* dragging state */ }
+```
+
+**Accessibility:** Use the `announcements` option on `dnd.create({...})` to
+provide screen-reader-friendly state. The library already wires this up to
+an off-screen ARIA live region.
+
+### 12. `dropzone` only fires `isDragging` for actual file drags
+
+**What changed:** Plain text/link drags no longer trigger the file-drop UI.
+The library now requires either `dataTransfer.types.includes("Files")` OR
+at least one `DataTransferItem` with `kind === "file"`.
+
+**What to change:** Nothing for correct call sites. If you had a workaround
+suppressing UI based on the result of `onDrop`, you can remove it.
+
+### 13. `encoding.fromBase64Strict` is the new opt-in for untrusted Base64
+
+**What changed:** `fromBase64` is unchanged (lenient — Bun/Node accept
+garbage; browser is strict). Added `fromBase64Strict` that validates the
+alphabet, padding placement, and length-multiple-of-4 cross-runtime.
+
+**What to change:** Use `fromBase64Strict` for inputs you don't control:
+
+```ts
+// User-provided / URL / network input
+const bytes = encoding.fromBase64Strict(input); // throws on garbage
+```
+
+### 14. `charts.histogram` clamps `bins` at 1024
+
+**What changed:** `bins: 1e9` previously attempted gigabyte-scale
+allocation. Now clamped at 1024.
+
+**What to change:** Nothing — purely a safety cap.
+
+### 15. New gotchas worth knowing (no code change required)
+
+- `mutation`: concurrent in-flight mutations no longer overwrite newer
+  results. Slow-resolving older calls are silently dropped.
+- `mutation`: `AbortError` thrown by your mutation function now routes to
+  `onAbort`, not `onError`.
+- `localStore`: malformed stored JSON or wrong `_key` falls back to default
+  values instead of crashing.
+- `charts` log axes: data points where `x` or `y` is ≤ 0 are now filtered
+  before rendering (was: emitted huge off-plot SVG coordinates).
+- `timing.buffer`: write that arrives during an in-flight flush is now
+  preserved (previously the cache entry was deleted before the new value
+  could land).
+- `streaming.parseSSE`: handles CRLF split across chunk boundaries.
+- `search-params.deserialize`: filters `__proto__`, `constructor`,
+  `prototype` keys to prevent prototype pollution.
+
+---
+
+<!-- Future version sections append here -->

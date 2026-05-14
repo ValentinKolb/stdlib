@@ -51,6 +51,7 @@ sub-paths.
 | I need to... | Module | Entry point |
 |---|---|---|
 | Convert bytes to/from Base64, Hex, or Base32 | `encoding.toBase64/fromBase64/toHex/fromHex/toBase32/fromBase32` | core |
+| Strictly validate Base64 input (untrusted sources) | `encoding.fromBase64Strict` | core |
 | Encode/decode numbers as Base62 (URL-safe) | `encoding.toBase62/fromBase62` | core |
 
 ### Data & Error Handling
@@ -139,6 +140,7 @@ sub-paths.
 |---|---|---|
 | Store large/binary data persistently (OPFS-backed) | `kvStore.set/get/setBytes/getBytes` | browser |
 | Watch for kvStore changes (cross-tab) | `kvStore.watch` | browser |
+| Tear down kvStore state (tests / explicit shutdown) | `kvStore.destroy` | browser |
 | Read/write cookies (raw or JSON) | `cookies.readCookie/writeCookie/readJsonCookie/writeJsonCookie` | browser |
 | Copy text to clipboard | `clipboard.copy` | browser |
 | Show native notifications | `notifications.show/requestPermission` | browser |
@@ -174,3 +176,11 @@ For full API documentation on each entry point, read the specific skill:
 - **`stdlib-core`** -- encoding, crypto, password, result, dates, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
 - **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore, theme
 - **`stdlib-solid`** -- localStore, mutation, dnd, hotkeys, dropzone, clickOutside, clipboard, detailPanel, timed, a11y
+
+## Upgrading
+
+When upgrading the installed `@valentinkolb/stdlib` version in a consumer
+codebase, read `references/migrate.md` for the per-version checklist of
+what to grep for and how to update affected call sites. The migration guide
+is organized chronologically — work through each section from your current
+version forward.

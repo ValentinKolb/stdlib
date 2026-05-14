@@ -25,8 +25,10 @@ bun add solid-js lean-qr
 |---|---|---|
 | `@valentinkolb/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
 | `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
-| `@valentinkolb/stdlib/browser` | Browser | files, images, cookies, clipboard, notifications, kv-store, theme |
+| `@valentinkolb/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
 | `@valentinkolb/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
+
+The split is by **runtime requirement**, not import preference: `browser` modules touch DOM/OPFS/BroadcastChannel and would crash in Bun/Node if imported from the root entry. Use the subpath that matches the environment you're targeting.
 
 ## Quick Start
 
@@ -130,6 +132,27 @@ const correlation = charts.scatter({
 
 // All functions return SVG strings — inject via innerHTML or write to disk
 document.getElementById("revenue").innerHTML = revenue;
+```
+
+### Reactive Cross-Tab Storage
+
+```typescript
+import { kvStore } from "@valentinkolb/stdlib/browser";
+
+// Persistent OPFS-backed key-value storage (async, no 5 MB cap, cross-tab via BroadcastChannel)
+await kvStore.set("user:1", { name: "Alice", lastSeen: Date.now() });
+await kvStore.setBytes("files:photo.raw", largeUint8Array);
+
+// React to changes — fires for local writes AND writes from other tabs
+const unwatch = kvStore.watch(
+  (event) => {                   // event = { type: "set" | "delete" | "clear", key }
+    if (event.type === "set") refreshUI(event.key);
+  },
+  "user:",                       // optional prefix filter
+);
+
+// Later: stop watching (e.g. component unmount)
+unwatch();
 ```
 
 ### Interactive SolidJS Editor

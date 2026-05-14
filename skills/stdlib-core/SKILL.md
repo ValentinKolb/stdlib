@@ -44,7 +44,8 @@ Binary encoding/decoding for Base64, Hex, and Base32. All functions work in both
 
 ```ts
 encoding.toBase64(bytes: Uint8Array): string
-encoding.fromBase64(base64: string): Uint8Array
+encoding.fromBase64(base64: string): Uint8Array        // lenient (Bun/Node accept garbage)
+encoding.fromBase64Strict(base64: string): Uint8Array  // strict: validates alphabet + padding; cross-runtime-consistent. Use for untrusted input.
 
 encoding.toHex(bytes: Uint8Array): string          // lowercase, no "0x" prefix
 encoding.fromHex(hex: string): Uint8Array           // case-insensitive, throws on odd length
@@ -115,11 +116,16 @@ Hybrid ECDSA (signing) + ECDH (encryption) on P-256. Keys are serialized as `"S0
 ```ts
 crypto.asymmetric.generate(): Promise<{ privateKey: string; publicKey: string }>
 
-crypto.asymmetric.sign(data: { privateKey: string; message: string }): Promise<{ nonce: string; timestamp: number; signature: string }>
+crypto.asymmetric.sign(data: { privateKey: string; message: string }): Promise<{
+  nonce: string; timestamp: number; signature: string; v: number    // always 2 for new signatures (length-prefixed payload)
+}>
 
 crypto.asymmetric.verify(data: {
   publicKey: string; signature: string; nonce: string;
-  timestamp: number; message: string; maxAge?: number
+  timestamp: number; message: string;
+  maxAge?: number;
+  v?: number;          // forwarded from sign()'s output; controls payload format. Missing → tries both v2 and v1 for backward compat.
+  strict?: boolean;    // when true: rejects v1 (legacy) signatures AND high-S ECDSA forms. Use for security-critical paths.
 }): Promise<boolean>
 
 crypto.asymmetric.encrypt(data: { payload: string; publicKey: string }): Promise<string>
@@ -132,11 +138,14 @@ import { crypto } from "@valentinkolb/stdlib";
 // Generate key pair
 const { privateKey, publicKey } = await crypto.asymmetric.generate();
 
-// Sign + verify
+// Sign + verify — forward ALL fields from sig (including v) to lock in v2
 const sig = await crypto.asymmetric.sign({ privateKey, message: "hello" });
 const valid = await crypto.asymmetric.verify({
-  publicKey, signature: sig.signature,
-  nonce: sig.nonce, timestamp: sig.timestamp, message: "hello"
+  ...sig, publicKey, message: "hello",
+});
+// For security-critical paths use strict mode (rejects legacy v1 + high-S sigs):
+const strictlyValid = await crypto.asymmetric.verify({
+  ...sig, publicKey, message: "hello", strict: true,
 });
 
 // Encrypt + decrypt
@@ -146,8 +155,11 @@ const decrypted = await crypto.asymmetric.decrypt({ payload: encrypted, privateK
 
 **Gotchas:**
 - `verify` rejects signatures >1 hour old (configurable via `maxAge`), and >30s in the future (clock skew).
-- `verify` never throws -- returns `false` on any crypto failure.
+- `verify` returns `false` on crypto failures, but THROWS `TypeError` on invalid `maxAge` (NaN/Infinity/<=0) so the expiration check can't be silently disabled.
 - Each `encrypt` call generates an ephemeral key pair, so the same plaintext encrypts differently each time.
+- **Signature format v2 (current default):** `sign()` returns `v: 2` and uses length-prefixed payload bytes, closing the v1 field-boundary collision attack. Old v1 signatures (no `v`) still verify by default for backward compat. Pass `strict: true` to reject them. Forward the full `sig` object via `{...sig}` to lock in v2 verification.
+- **ECDSA malleability:** `sign()` always emits low-S signatures. `verify()` accepts both forms by default; pass `strict: true` to reject high-S (non-canonical) forgeries.
+- **Asymmetric blob v2 (current default):** uses full 32-byte HKDF salt + raw key encoding consistently. Old v1 blobs (16-byte salt, SPKI header) still decrypt — the version byte in the blob drives the decryption path automatically.
 
 ### crypto.symmetric
 
@@ -174,6 +186,10 @@ const key = crypto.common.generateKey();
 const enc2 = await crypto.symmetric.encrypt({ payload: "data", key, stretched: false });
 const dec2 = await crypto.symmetric.decrypt({ payload: enc2, key });
 ```
+
+**Gotchas:**
+- With `stretched: false` (HKDF mode), the key must be at least 16 hex chars (8 bytes); shorter keys throw. PBKDF2 (`stretched: true`, default) tolerates short user passwords because it stretches them.
+- `decrypt()` throws on blobs shorter than 46 bytes ("too short") or with an unknown KDF flag (must be 0x00 or 0x01). Previously these were silent failures producing kryptic WebCrypto errors.
 
 ### crypto.totp
 
@@ -203,8 +219,9 @@ const ok = await crypto.totp.verify({ token: "123456", secret });
 
 **Gotchas:**
 - Uses SHA-1 (required by the TOTP spec), 6 digits, 30-second period.
-- Uses constant-time comparison to prevent timing attacks.
-- Never throws -- returns `false` on invalid Base32 or crypto errors.
+- Constant-time comparison is uniform across all `window` steps regardless of input token length — no length-based timing leak.
+- **Throws** on malformed Base32 secret (was previously silent `false` — programmer mistakes are now loud, not buried as "wrong token"). Crypto failures (HMAC errors) still return `false`.
+- `window` is clamped to a max of 10 to prevent DoS via `window: 1e7` (which previously meant millions of HMACs). Negative or non-finite values throw `TypeError`.
 
 ---
 

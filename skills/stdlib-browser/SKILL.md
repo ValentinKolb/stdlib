@@ -731,6 +731,8 @@ await kvStore.set("prefs", { theme: "dark" });
 await kvStore.set("counter", 42);
 ```
 
+**Throws** `TypeError` when `value` is not JSON-serializable (top-level `undefined`, a function, or a `Symbol`). Previously silent — produced a corrupt `has(k) === true` + `get(k) === undefined` half-state. Use `kvStore.delete(key)` to remove an entry.
+
 ### kvStore.get
 
 Retrieve a JSON value. Returns `undefined` for missing keys or keys stored with `setBytes`.
@@ -829,6 +831,8 @@ Delete all entries and remove the store directory. The store is immediately usab
 kvStore.clear(): Promise<void>
 ```
 
+**Errors:** propagates `DOMException`s other than `NotFoundError` (permission / quota errors are no longer silently swallowed — only "already empty" is). Watchers (including prefix-filtered ones) all receive a `clear` event regardless of their prefix.
+
 ### kvStore.watch
 
 Watch for store mutations, optionally filtered by key prefix. Fires for changes in the current tab and from other tabs (via BroadcastChannel). Returns an unsubscribe function. The event does not contain the value -- call `get`/`getBytes` inside the callback if needed.
@@ -849,6 +853,24 @@ const unwatch = kvStore.watch((e) => {
 // Later: stop watching
 unwatch();
 ```
+
+### kvStore.destroy
+
+Tear down the module-level state and close the BroadcastChannel. Useful in test environments (each test wants a clean state) and for explicit shutdown in long-lived apps. The next operation re-initialises everything lazily.
+
+```ts
+kvStore.destroy(): void   // idempotent — safe to call twice
+```
+
+```ts
+// Test setup: ensure no listeners leak between tests
+afterEach(() => kvStore.destroy());
+```
+
+**Gotchas:**
+- Corrupt on-disk index now **throws** with a descriptive error instead of silently resetting the store to empty (which previously orphaned every existing blob). Catch the error if your app legitimately needs to recover from a corrupted index.
+- Concurrent same-tab writes are now serialised even when Web Locks are unavailable (Promise-chain fallback). Cross-tab serialisation still requires Web Locks.
+- Old blobs are deleted **after** the new value is durably written, so a quota / write failure no longer loses the previous value.
 
 ---
 

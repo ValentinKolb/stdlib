@@ -94,6 +94,10 @@ return (
 );
 ```
 
+**Gotchas:**
+- **Concurrent mutations**: when `mutate()` is called while a previous mutation is in-flight, the older mutation's result is silently dropped on resolution — the newer mutation is always the source of truth. Previously a slow-resolving older call could overwrite a fresh `data` signal.
+- **Abort routing**: when the mutation function throws an `AbortError` (e.g. `fetch` aborted via the `abortSignal`), `onAbort` fires — not `onError`. Same when `abort()` is called explicitly. `onError` is reserved for genuine failures.
+
 ---
 
 ## timed
@@ -321,7 +325,26 @@ dnd.create<TDragMeta, TDropMeta, TIntent>(
 | `meta` | `TDropMeta` | Arbitrary metadata. |
 | `disabled?` | `boolean` | Disable dropping. |
 
-Data attributes set automatically: `data-dnd-draggable`, `data-dnd-droppable`, `data-dnd-over`, `aria-grabbed`.
+Data attributes set automatically: `data-dnd-draggable`, `data-dnd-droppable`, `data-dnd-over`, `data-dnd-active` (and `aria-grabbed`, see warning below).
+
+> [!WARNING] **`aria-grabbed` is deprecated** (removed from ARIA 1.2). Screen
+> readers (NVDA, JAWS, VoiceOver) ignore it. The library still emits it for
+> backward compatibility, but **do not rely on it for accessibility or CSS
+> styling**.
+>
+> **What to use instead:**
+> - **For a11y:** The library already emits an off-screen ARIA live region
+>   (`role="status"`, `aria-live="polite"`) wired up via the `announcements`
+>   option below. Make sure to provide `dragStart` / `dragOver` / `drop` /
+>   `cancel` strings — that's how screen readers learn about the drag state.
+> - **For CSS hooks:** target the data attributes `[data-dnd-draggable]`,
+>   `[data-dnd-droppable]`, `[data-dnd-over]`, or the boolean
+>   `[data-dnd-active="true"]` on the source element instead of
+>   `[aria-grabbed="true"]`. The data attributes are stable and not part of
+>   any ARIA spec, so they won't be deprecated.
+> - **If migrating existing styles:** replace `[aria-grabbed="true"]` →
+>   `[data-dnd-active="true"]` and `[aria-grabbed="false"]` →
+>   `[data-dnd-active="false"]` (or drop the `false` rule — it's the default).
 
 Ghost element: clones the source element (or its `[data-dnd-preview]` child) as a fixed-position overlay. Supports `data-dnd-count` attribute for badge rendering.
 
@@ -384,9 +407,11 @@ detailPanel.createList<T>(options: { paramName: string; eventName: string; initi
 detailPanel.select<T>(paramName: string, eventName: string, item: T | null, itemKey: string | null): void
 detailPanel.dispatch<T>(eventName: string, item: T | null, itemKey: string | null): void
 detailPanel.shouldHandleClick(event: MouseEvent, anchor?: HTMLAnchorElement | null): boolean
-detailPanel.setUrlParam(paramName: string, value: string | null): void
+detailPanel.setUrlParam(paramName: string, value: string | null, mode?: "push" | "replace"): void
 detailPanel.getUrlParam(paramName: string): string | null
 ```
+
+**Note:** `setUrlParam` now defaults to `history.pushState` so Back/Forward navigation works between selections (the documented contract of the URL-synced panel). Pass `"replace"` for the initial URL sync where you don't want to add a history entry. Previously the function always used `replaceState`, breaking Back-button behavior.
 
 **DetailPanelOptions<T>:**
 
@@ -500,6 +525,10 @@ const exists = localStore.exists("pad:abc");
 const data = localStore.read<PadData>("pad:abc");
 ```
 
+**Gotchas:**
+- Stored JSON is validated on read: if the parsed value isn't a plain object whose `_key` matches the requested key (e.g. null, an array, a primitive, or a key from a different `localStore`), `create()` falls back to the default value instead of handing the caller a malformed reactive store.
+- Cross-tab updates (`storage` event from another tab) use `reconcile()` for full replacement — deleted properties disappear, no stale fields leak through. Previously a partial `setStore(object)` merge could leave removed fields visible after a cross-tab remove.
+
 ---
 
 ## clipboard
@@ -606,6 +635,8 @@ return (
   </div>
 );
 ```
+
+**Gotcha:** `isDragging()` only flips to `true` when the drag actually contains files (either via `dataTransfer.types.includes("Files")` or at least one `DataTransferItem` with `kind === "file"`). Plain text or link drags no longer trigger the file-drop UI.
 
 ---
 
