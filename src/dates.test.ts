@@ -36,6 +36,17 @@ const {
   months,
 } = dates;
 
+/**
+ * Construct a Date at LOCAL midnight from a YYYY-MM-DD string. Calendar
+ * functions (getMonthGrid, isToday, etc.) operate on local-time days, so
+ * tests must construct dates in local time too. Using `new Date("YYYY-MM-DD")`
+ * parses as UTC and silently shifts the day in non-zero timezones.
+ */
+const localDate = (s: string): Date => {
+  const [y, m, d] = s.split("-").map(Number) as [number, number, number];
+  return new Date(y, m - 1, d);
+};
+
 // =============================================================================
 // Pure formatters (no mocking needed)
 // =============================================================================
@@ -261,13 +272,13 @@ describe("getMonthGrid", () => {
 
 describe("getWeekDays", () => {
   it("returns 7 days starting from Monday", () => {
-    const days = getWeekDays(new Date("2025-03-05")); // Wednesday
+    const days = getWeekDays(localDate("2025-03-05")); // Wednesday
     expect(days.length).toBe(7);
     expect(days[0]!.getDay()).toBe(1); // Monday
   });
 
   it("returns correct week for date falling on Sunday", () => {
-    const days = getWeekDays(new Date("2025-03-09")); // Sunday
+    const days = getWeekDays(localDate("2025-03-09")); // Sunday
     expect(days[0]!.getDay()).toBe(1); // Still starts Monday
   });
 });
@@ -278,13 +289,13 @@ describe("getWeekDays", () => {
 
 describe("getDateRange", () => {
   it("month view includes padding days", () => {
-    const { from } = getDateRange("month", new Date("2025-03-15"));
+    const { from } = getDateRange("month", localDate("2025-03-15"));
     // March 1 2025 is Saturday, so week starts Monday Feb 24
-    expect(from.getTime()).toBeLessThan(new Date("2025-03-01").getTime());
+    expect(from.getTime()).toBeLessThan(localDate("2025-03-01").getTime());
   });
 
   it("week view returns 7-day span", () => {
-    const { from, to } = getDateRange("week", new Date("2025-03-05"));
+    const { from, to } = getDateRange("week", localDate("2025-03-05"));
     const diffDays = (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24);
     expect(diffDays).toBeGreaterThanOrEqual(6);
     expect(diffDays).toBeLessThanOrEqual(7);
@@ -298,27 +309,27 @@ describe("getDateRange", () => {
 describe("itemOnDate", () => {
   it("returns true for event spanning the date", () => {
     const item = { startsAt: "2025-03-04T10:00", endsAt: "2025-03-06T18:00", deadline: null };
-    expect(itemOnDate(item, new Date("2025-03-05"))).toBe(true);
+    expect(itemOnDate(item, localDate("2025-03-05"))).toBe(true);
   });
 
   it("returns false for event not spanning the date", () => {
     const item = { startsAt: "2025-03-01T10:00", endsAt: "2025-03-02T18:00", deadline: null };
-    expect(itemOnDate(item, new Date("2025-03-05"))).toBe(false);
+    expect(itemOnDate(item, localDate("2025-03-05"))).toBe(false);
   });
 
   it("returns true for deadline on the same day", () => {
     const item = { startsAt: null, endsAt: null, deadline: "2025-03-05T10:00" };
-    expect(itemOnDate(item, new Date("2025-03-05"))).toBe(true);
+    expect(itemOnDate(item, localDate("2025-03-05"))).toBe(true);
   });
 
   it("returns false for deadline on different day", () => {
     const item = { startsAt: null, endsAt: null, deadline: "2025-03-06T10:00" };
-    expect(itemOnDate(item, new Date("2025-03-05"))).toBe(false);
+    expect(itemOnDate(item, localDate("2025-03-05"))).toBe(false);
   });
 
   it("returns false when no startsAt/endsAt/deadline", () => {
     const item = { startsAt: null, endsAt: null, deadline: null };
-    expect(itemOnDate(item, new Date("2025-03-05"))).toBe(false);
+    expect(itemOnDate(item, localDate("2025-03-05"))).toBe(false);
   });
 });
 
@@ -333,11 +344,11 @@ describe("getDayItems", () => {
       { startsAt: "2025-03-06T10:00", endsAt: "2025-03-06T12:00", deadline: null },
       { startsAt: null, endsAt: null, deadline: "2025-03-05T15:00" },
     ];
-    expect(getDayItems(items, new Date("2025-03-05")).length).toBe(2);
+    expect(getDayItems(items, localDate("2025-03-05")).length).toBe(2);
   });
 
   it("returns empty array when no items match", () => {
-    expect(getDayItems([], new Date("2025-03-05")).length).toBe(0);
+    expect(getDayItems([], localDate("2025-03-05")).length).toBe(0);
   });
 });
 
@@ -356,21 +367,21 @@ describe("isToday", () => {
   });
 
   it("returns true for today's date", () => {
-    expect(isToday(new Date("2025-03-05"))).toBe(true);
+    expect(isToday(localDate("2025-03-05"))).toBe(true);
   });
 
   it("returns false for yesterday", () => {
-    expect(isToday(new Date("2025-03-04"))).toBe(false);
+    expect(isToday(localDate("2025-03-04"))).toBe(false);
   });
 });
 
 describe("isSameMonth", () => {
   it("returns true for dates in same month", () => {
-    expect(isSameMonth(new Date("2025-03-01"), new Date("2025-03-31"))).toBe(true);
+    expect(isSameMonth(localDate("2025-03-01"), localDate("2025-03-31"))).toBe(true);
   });
 
   it("returns false for dates in different months", () => {
-    expect(isSameMonth(new Date("2025-03-01"), new Date("2025-04-01"))).toBe(false);
+    expect(isSameMonth(localDate("2025-03-01"), localDate("2025-04-01"))).toBe(false);
   });
 });
 
@@ -380,7 +391,7 @@ describe("isSameDay", () => {
   });
 
   it("returns false for different dates", () => {
-    expect(isSameDay(new Date("2025-03-05"), new Date("2025-03-06"))).toBe(false);
+    expect(isSameDay(localDate("2025-03-05"), localDate("2025-03-06"))).toBe(false);
   });
 });
 
@@ -390,24 +401,24 @@ describe("isSameDay", () => {
 
 describe("formatting", () => {
   it("formatMonthYear returns English month name", () => {
-    expect(formatMonthYear(new Date("2025-03-05"))).toBe("March 2025");
+    expect(formatMonthYear(localDate("2025-03-05"))).toBe("March 2025");
   });
 
   it("formatDayNumber returns day without padding", () => {
-    expect(formatDayNumber(new Date("2025-03-05"))).toBe("5");
+    expect(formatDayNumber(localDate("2025-03-05"))).toBe("5");
   });
 
   it("formatWeekdayShort returns 2-letter English abbreviation", () => {
     // 2025-03-05 is Wednesday -> "We" (first two chars of "Wed")
-    expect(formatWeekdayShort(new Date("2025-03-05"))).toBe("We");
+    expect(formatWeekdayShort(localDate("2025-03-05"))).toBe("We");
   });
 
   it("formatFullDate returns European-style format", () => {
-    expect(formatFullDate(new Date("2025-03-05"))).toBe("5. March 2025");
+    expect(formatFullDate(localDate("2025-03-05"))).toBe("5. March 2025");
   });
 
   it("formatDateKey returns YYYY-MM-DD", () => {
-    expect(formatDateKey(new Date("2025-03-05"))).toBe("2025-03-05");
+    expect(formatDateKey(localDate("2025-03-05"))).toBe("2025-03-05");
   });
 
   it("formatTime returns HH:mm", () => {
@@ -421,16 +432,16 @@ describe("formatting", () => {
 
 describe("locale support", () => {
   it("formatMonthYear supports locale", () => {
-    expect(formatMonthYear(new Date("2025-03-05"), "de")).toBe("März 2025");
+    expect(formatMonthYear(localDate("2025-03-05"), "de")).toBe("März 2025");
   });
 
   it("formatWeekdayShort supports locale", () => {
     // Wednesday in German short is "Mi", sliced to 2 chars -> "Mi"
-    expect(formatWeekdayShort(new Date("2025-03-05"), "de")).toBe("Mi");
+    expect(formatWeekdayShort(localDate("2025-03-05"), "de")).toBe("Mi");
   });
 
   it("formatFullDate supports locale", () => {
-    expect(formatFullDate(new Date("2025-03-05"), "de")).toBe("5. März 2025");
+    expect(formatFullDate(localDate("2025-03-05"), "de")).toBe("5. März 2025");
   });
 });
 
@@ -481,27 +492,27 @@ describe("months", () => {
 
 describe("navigation", () => {
   it("addMonths adds months correctly", () => {
-    const result = addMonths(new Date("2025-01-15"), 2);
+    const result = addMonths(localDate("2025-01-15"), 2);
     expect(result.getMonth()).toBe(2); // March
   });
 
   it("addWeeks adds weeks correctly", () => {
-    const result = addWeeks(new Date("2025-03-01"), 1);
+    const result = addWeeks(localDate("2025-03-01"), 1);
     expect(result.getDate()).toBe(8);
   });
 
   it("addDays adds days correctly", () => {
-    const result = addDays(new Date("2025-03-05"), 3);
+    const result = addDays(localDate("2025-03-05"), 3);
     expect(result.getDate()).toBe(8);
   });
 
   it("startOfMonth returns first day", () => {
-    const result = startOfMonth(new Date("2025-03-15"));
+    const result = startOfMonth(localDate("2025-03-15"));
     expect(result.getDate()).toBe(1);
   });
 
   it("startOfWeek returns Monday", () => {
-    const result = startOfWeek(new Date("2025-03-05")); // Wednesday
+    const result = startOfWeek(localDate("2025-03-05")); // Wednesday
     expect(result.getDay()).toBe(1); // Monday
   });
 });
@@ -519,7 +530,7 @@ describe("URL helpers", () => {
   it("buildCalendarUrl includes cv and cd params", () => {
     const url = buildCalendarUrl("/page", {
       view: "week",
-      date: new Date("2025-03-05"),
+      date: localDate("2025-03-05"),
     });
     expect(url).toContain("cv=week");
     expect(url).toContain("cd=2025-03-05");
@@ -542,5 +553,21 @@ describe("URL helpers", () => {
     const result = parseCalendarDate(undefined);
     const t = today();
     expect(isSameDay(result, t)).toBe(true);
+  });
+
+  it("parseCalendarDate produces local-midnight (TZ regression test)", () => {
+    // The bug was: new Date("2025-03-05") parsed as UTC; in negative-offset
+    // timezones .getDate() returned 4 (previous day), silently breaking
+    // calendar URLs throughout the Americas.
+    const d = parseCalendarDate("2025-03-05");
+    expect(d.getHours()).toBe(0);
+    expect(d.getMinutes()).toBe(0);
+    expect(d.getSeconds()).toBe(0);
+  });
+
+  it("parseCalendarDate normalizes ISO datetimes to local midnight", () => {
+    const d = parseCalendarDate("2025-03-05T15:30:00Z");
+    expect(d.getHours()).toBe(0);
+    expect(d.getMinutes()).toBe(0);
   });
 });

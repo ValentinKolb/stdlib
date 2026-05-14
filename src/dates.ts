@@ -520,12 +520,32 @@ export const buildCalendarUrl = (baseUrl: string, params: CalendarUrlParams): st
 
 /**
  * Parse a `YYYY-MM-DD` date string from a URL query parameter into a `Date`.
- * Returns today's date (via {@link today}) when the parameter is missing or invalid.
+ *
+ * The returned `Date` is anchored at local-midnight (matching the rest of
+ * the calendar API, which operates on local-time days). Without this fix,
+ * `new Date("2025-03-05")` would be parsed as UTC and read as the previous
+ * day in negative-offset timezones — silently breaking calendar URLs in
+ * the Americas while passing tests in Europe.
+ *
+ * Returns today's date (via {@link today}) when the parameter is missing or
+ * invalid.
  */
 export const parseCalendarDate = (param: string | undefined): Date => {
   if (!param) return today();
-  const parsed = new Date(param);
-  return !isNaN(parsed.getTime()) ? parsed : today();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(param);
+  if (match) {
+    const [, y, m, d] = match;
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    if (!isNaN(date.getTime())) return date;
+  }
+  // Fallback: try lenient parse (handles ISO datetimes etc.) but normalize
+  // to local-midnight of the parsed day so downstream calendar logic stays
+  // timezone-correct.
+  const lenient = new Date(param);
+  if (!isNaN(lenient.getTime())) {
+    return new Date(lenient.getFullYear(), lenient.getMonth(), lenient.getDate());
+  }
+  return today();
 };
 
 // =============================================================================
