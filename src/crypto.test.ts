@@ -348,3 +348,316 @@ describe("totp", () => {
     expect(a.secret).not.toBe(b.secret);
   });
 });
+
+// ============================================================================
+// Audit fixes — explicit non-breaking proofs + new security guarantees
+// ============================================================================
+
+import { toBase64, fromBase64, fromBase32, fromHex, toHex } from "./encoding";
+
+describe("crypto audit — backward compat (non-breaking)", () => {
+  it("verify() accepts legacy v1 signatures (no v field)", async () => {
+    // Reconstruct a v1 signature by signing the legacy `nonce:message:ts`
+    // payload directly with raw subtle.sign — simulates a signature emitted
+    // by the pre-audit version of this library.
+    const keys = await asymmetric.generate();
+    const [ecdsaKey] = keys.privateKey
+      .replace(/^S01:/, "")
+      .split(":");
+    const cryptoKey = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      fromBase64(ecdsaKey!) as BufferSource,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    );
+    const nonce = "legacy-nonce";
+    const message = "hello";
+    const timestamp = Date.now();
+    const legacyBytes = new TextEncoder().encode(`${nonce}:${message}:${timestamp}`);
+    const sigRaw = new Uint8Array(
+      await globalThis.crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        cryptoKey,
+        legacyBytes as BufferSource,
+      ),
+    );
+
+    // verify() WITHOUT `v` falls back to v1 path → should accept.
+    const valid = await asymmetric.verify({
+      publicKey: keys.publicKey,
+      signature: toBase64(sigRaw),
+      nonce,
+      timestamp,
+      message,
+    });
+    expect(valid).toBe(true);
+  });
+
+  it("verify({v:1}) explicitly accepts legacy signatures", async () => {
+    const keys = await asymmetric.generate();
+    const [ecdsaKey] = keys.privateKey.replace(/^S01:/, "").split(":");
+    const cryptoKey = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      fromBase64(ecdsaKey!) as BufferSource,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    );
+    const nonce = "n";
+    const message = "m";
+    const timestamp = Date.now();
+    const legacyBytes = new TextEncoder().encode(`${nonce}:${message}:${timestamp}`);
+    const sig = new Uint8Array(
+      await globalThis.crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        cryptoKey,
+        legacyBytes as BufferSource,
+      ),
+    );
+    const valid = await asymmetric.verify({
+      publicKey: keys.publicKey,
+      signature: toBase64(sig),
+      nonce,
+      timestamp,
+      message,
+      v: 1,
+    });
+    expect(valid).toBe(true);
+  });
+
+  it("new sign() emits v:2 and verify() roundtrips correctly", async () => {
+    const keys = await asymmetric.generate();
+    const sig = await asymmetric.sign({ privateKey: keys.privateKey, message: "hello" });
+    expect(sig.v).toBe(2);
+    const valid = await asymmetric.verify({
+      ...sig,
+      publicKey: keys.publicKey,
+      message: "hello",
+    });
+    expect(valid).toBe(true);
+  });
+
+  it("sym.decrypt still handles ciphertexts emitted by previous version", async () => {
+    // Roundtrip via the public API exercises the existing 0x01-version
+    // format (we did not bump the sym version — only tightened the flag
+    // check and added min-length validation, both of which only reject
+    // already-malformed inputs).
+    const key = common.generateKey();
+    const enc = await symmetric.encrypt({ payload: "hello", key, stretched: false });
+    const dec = await symmetric.decrypt({ payload: enc, key });
+    expect(dec).toBe("hello");
+  });
+});
+
+describe("crypto audit — security guarantees", () => {
+  it("explicit v:2 sig is NOT verifiable against legacy field-boundary forgery", async () => {
+    // Sign with new format
+    const keys = await asymmetric.generate();
+    const sig = await asymmetric.sign({ privateKey: keys.privateKey, message: "false" });
+
+    // Attacker swaps the field boundary: claims nonce contains the original
+    // nonce + the original message, and message is something else. In v1
+    // bytes these would produce the same signed-bytes; in v2 they cannot.
+    const forgedValid = await asymmetric.verify({
+      publicKey: keys.publicKey,
+      signature: sig.signature,
+      nonce: `${sig.nonce}:false`,
+      timestamp: sig.timestamp,
+      message: "",
+      v: 2, // explicitly say "I expect a v2 signature"
+    });
+    expect(forgedValid).toBe(false);
+  });
+
+  it("verify({strict: true}) rejects legacy signatures (no v field)", async () => {
+    const keys = await asymmetric.generate();
+    const [ecdsaKey] = keys.privateKey.replace(/^S01:/, "").split(":");
+    const cryptoKey = await globalThis.crypto.subtle.importKey(
+      "pkcs8",
+      fromBase64(ecdsaKey!) as BufferSource,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    );
+    const nonce = "n";
+    const message = "m";
+    const timestamp = Date.now();
+    const legacyBytes = new TextEncoder().encode(`${nonce}:${message}:${timestamp}`);
+    const sig = new Uint8Array(
+      await globalThis.crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        cryptoKey,
+        legacyBytes as BufferSource,
+      ),
+    );
+    const valid = await asymmetric.verify({
+      publicKey: keys.publicKey,
+      signature: toBase64(sig),
+      nonce,
+      timestamp,
+      message,
+      strict: true,
+    });
+    expect(valid).toBe(false);
+  });
+
+  it("sign() always produces low-S signatures (malleability mitigation)", async () => {
+    // Run several signs and confirm each s is in the low half.
+    const keys = await asymmetric.generate();
+    const P256_N = BigInt(
+      "0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+    );
+    const HALF_N = P256_N >> 1n;
+    const bytesToBI = (b: Uint8Array): bigint => {
+      let n = 0n;
+      for (const x of b) n = (n << 8n) | BigInt(x);
+      return n;
+    };
+    for (let i = 0; i < 8; i++) {
+      const sig = await asymmetric.sign({ privateKey: keys.privateKey, message: `m${i}` });
+      const sigBytes = fromBase64(sig.signature);
+      const s = bytesToBI(sigBytes.subarray(32, 64));
+      expect(s).toBeLessThanOrEqual(HALF_N);
+    }
+  });
+
+  it("verify({strict: true}) rejects high-S equivalents of valid signatures", async () => {
+    const keys = await asymmetric.generate();
+    const sig = await asymmetric.sign({ privateKey: keys.privateKey, message: "x" });
+    const sigBytes = fromBase64(sig.signature);
+    // Flip s → n - s (high-S form). The flipped signature still verifies
+    // mathematically (it's the malleability bug), but `strict: true` must
+    // reject it as non-canonical.
+    const P256_N = BigInt(
+      "0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+    );
+    const bytesToBI = (b: Uint8Array): bigint => {
+      let n = 0n;
+      for (const x of b) n = (n << 8n) | BigInt(x);
+      return n;
+    };
+    const biToBytes = (n: bigint, len: number): Uint8Array => {
+      const out = new Uint8Array(len);
+      let v = n;
+      for (let i = len - 1; i >= 0; i--) {
+        out[i] = Number(v & 0xffn);
+        v >>= 8n;
+      }
+      return out;
+    };
+    const sBI = bytesToBI(sigBytes.subarray(32, 64));
+    const flipped = new Uint8Array(64);
+    flipped.set(sigBytes.subarray(0, 32), 0);
+    flipped.set(biToBytes(P256_N - sBI, 32), 32);
+    const valid = await asymmetric.verify({
+      ...sig,
+      publicKey: keys.publicKey,
+      message: "x",
+      signature: toBase64(flipped),
+      strict: true,
+    });
+    expect(valid).toBe(false);
+  });
+});
+
+describe("crypto audit — validation", () => {
+  it("verify throws on non-finite maxAge", async () => {
+    const keys = await asymmetric.generate();
+    const sig = await asymmetric.sign({ privateKey: keys.privateKey, message: "x" });
+    await expect(
+      asymmetric.verify({ ...sig, publicKey: keys.publicKey, message: "x", maxAge: NaN }),
+    ).rejects.toThrow(/maxAge/);
+    await expect(
+      asymmetric.verify({ ...sig, publicKey: keys.publicKey, message: "x", maxAge: Infinity }),
+    ).rejects.toThrow(/maxAge/);
+    await expect(
+      asymmetric.verify({ ...sig, publicKey: keys.publicKey, message: "x", maxAge: -1 }),
+    ).rejects.toThrow(/maxAge/);
+  });
+
+  it("symmetric.decrypt throws on too-short blob", async () => {
+    // 10 hex chars = 5 bytes → way under the 46-byte minimum header size.
+    await expect(symmetric.decrypt({ payload: "aabbccddee", key: "k" })).rejects.toThrow(/too short/);
+  });
+
+  it("symmetric.decrypt throws on unknown KDF flag", async () => {
+    // Build a 46-byte blob: version=0x01, flag=0xFF (invalid), then padding.
+    const blob = new Uint8Array(46);
+    blob[0] = 0x01;
+    blob[1] = 0xff;
+    await expect(symmetric.decrypt({ payload: toHex(blob), key: "k" })).rejects.toThrow(/KDF flag/);
+  });
+
+  it("symmetric.encrypt with stretched:false rejects too-short HKDF key", async () => {
+    await expect(
+      symmetric.encrypt({ payload: "x", key: "ab", stretched: false }),
+    ).rejects.toThrow(/HKDF/);
+  });
+
+  it("symmetric.encrypt with stretched:true accepts short keys (PBKDF2)", async () => {
+    // PBKDF2 deliberately tolerates short user passwords — only HKDF mode
+    // requires meaningful entropy upfront.
+    const enc = await symmetric.encrypt({ payload: "x", key: "ab", stretched: true });
+    expect(typeof enc).toBe("string");
+  });
+
+  it("totp.verify throws on malformed Base32 secret (not silent false)", async () => {
+    // Programmer errors should surface; the previous behavior silently
+    // returned false and made debugging painful.
+    await expect(
+      totp.verify({ token: "123456", secret: "not-base32-at-all!@#$%" }),
+    ).rejects.toThrow();
+  });
+
+  it("totp.verify throws on negative window", async () => {
+    const { secret } = await totp.create({ label: "x", issuer: "App" });
+    await expect(totp.verify({ token: "123456", secret, window: -1 })).rejects.toThrow(/window/);
+  });
+
+  it("totp.verify clamps absurd window values to TOTP_MAX_WINDOW", async () => {
+    // Without the clamp, this would do 2 million HMAC operations and hang.
+    const { secret } = await totp.create({ label: "x", issuer: "App" });
+    const start = performance.now();
+    await totp.verify({ token: "000000", secret, window: 1_000_000 });
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(500); // well below DoS levels
+  });
+});
+
+describe("crypto audit — TOTP RFC-style ground-truth", () => {
+  it("verifies a token generated for the current time step", async () => {
+    // The previous test only asserted that random tokens FAIL — a broken
+    // verify() that always returned false would pass. Here we generate a
+    // valid token using the same primitives the verifier uses (HMAC-SHA1 +
+    // dynamic truncation per RFC 4226) and assert it verifies as true.
+    const { secret } = await totp.create({ label: "test", issuer: "App" });
+    const secretBytes = fromBase32(secret);
+    const counter = BigInt(Math.floor(Date.now() / 1000 / 30));
+
+    // RFC 4226 HMAC-SHA1 + dynamic truncation, replicated here.
+    const counterBytes = new Uint8Array(8);
+    const view = new DataView(counterBytes.buffer);
+    view.setBigUint64(0, counter, false);
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw",
+      secretBytes as BufferSource,
+      { name: "HMAC", hash: "SHA-1" },
+      false,
+      ["sign"],
+    );
+    const hmac = new Uint8Array(
+      await globalThis.crypto.subtle.sign("HMAC", key, counterBytes as BufferSource),
+    );
+    const offset = hmac[hmac.length - 1]! & 0x0f;
+    const binCode =
+      ((hmac[offset]! & 0x7f) << 24) |
+      ((hmac[offset + 1]! & 0xff) << 16) |
+      ((hmac[offset + 2]! & 0xff) << 8) |
+      (hmac[offset + 3]! & 0xff);
+    const token = String(binCode % 1_000_000).padStart(6, "0");
+
+    const valid = await totp.verify({ token, secret });
+    expect(valid).toBe(true);
+  });
+});

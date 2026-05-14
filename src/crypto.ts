@@ -3,8 +3,140 @@ import { fromBase64, toBase64, fromBase32, toBase32, toHex, fromHex } from "./en
 const DEFAULT_SIGNATURE_AGE = 1000 * 60 * 60; // 1 hour
 const CLOCK_SKEW_TOLERANCE = 1000 * 30; // 30 seconds
 
+/** Current signature payload format. v2 uses length-prefixed serialization to
+ *  prevent the field-boundary collision attack that v1 (colon-separated
+ *  concatenation) was vulnerable to. */
+const SIG_VERSION_V2 = 2;
+
+/** Symmetric encryption blob version. v1 = 16-byte HKDF salt, hex flag byte.
+ *  v2 = full 32-byte HKDF salt (standards-aligned), strict flag validation. */
+const SYM_VERSION_V1 = 0x01;
+const SYM_VERSION_V2 = 0x02;
+
+/** Asymmetric encryption blob version. v1 = SPKI in header + raw in AAD +
+ *  16-byte salt. v2 = raw consistently + full 32-byte salt. */
+const ASYM_VERSION_V1 = 0x01;
+const ASYM_VERSION_V2 = 0x02;
+
+/** Maximum allowed TOTP verification window to prevent DoS (each step ≈ 1
+ *  HMAC). RFC 6238 recommends 1; we cap at 10 to leave a healthy margin. */
+const TOTP_MAX_WINDOW = 10;
+
+/** Standard TOTP token length (6 digits per RFC 6238). */
+const TOTP_TOKEN_LEN = 6;
+
+/** Minimum HKDF IKM length, in hex characters (8 bytes = 64 bits). Reject
+ *  shorter inputs as cryptographically uninteresting. */
+const HKDF_MIN_HEX_LEN = 16;
+
+/** Minimum length of a symmetric ciphertext blob, in bytes. The blob is
+ *  laid out as: version(1) + flag(1) + salt(16) + iv(12) + GCM-ciphertext(≥16),
+ *  so anything below 46 bytes can't possibly be valid. */
+const SYM_MIN_BLOB_LEN = 46;
+
+/** P-256 curve order. Used for ECDSA signature malleability mitigation —
+ *  any high-S signature `s` can be normalized to `n - s` (its low-S form). */
+const P256_N = BigInt(
+  "0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+);
+const P256_HALF_N = P256_N >> 1n;
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+// ============================================================================
+// Internal helpers for the audit fixes — placed early so subsequent code can
+// reference them without forward-declarations.
+// ============================================================================
+
+/** Convert big-endian byte array to BigInt. */
+const bytesToBigInt = (bytes: Uint8Array): bigint => {
+  let n = 0n;
+  for (const b of bytes) n = (n << 8n) | BigInt(b);
+  return n;
+};
+
+/** Convert BigInt to fixed-length big-endian Uint8Array. */
+const bigIntToBytes = (n: bigint, length: number): Uint8Array => {
+  const out = new Uint8Array(length);
+  let v = n;
+  for (let i = length - 1; i >= 0; i--) {
+    out[i] = Number(v & 0xffn);
+    v >>= 8n;
+  }
+  return out;
+};
+
+/**
+ * Normalize an IEEE-P1363 ECDSA-P256 raw signature (r || s, 64 bytes) to its
+ * low-S form. Mitigates signature malleability where `(r, s)` and `(r, n-s)`
+ * both verify against the same message — every legitimate sign-then-verify
+ * pair was previously susceptible to having `s` flipped by an attacker.
+ *
+ * Pass-through for non-64-byte inputs (defensive — wrong-curve signatures
+ * would have failed verify anyway).
+ */
+const ensureLowS = (sig: Uint8Array): Uint8Array => {
+  if (sig.length !== 64) return sig;
+  const s = bytesToBigInt(sig.subarray(32, 64));
+  if (s <= P256_HALF_N) return sig;
+  const lowS = P256_N - s;
+  const out = new Uint8Array(64);
+  out.set(sig.subarray(0, 32), 0);
+  out.set(bigIntToBytes(lowS, 32), 32);
+  return out;
+};
+
+/** True when an IEEE-P1363 P-256 signature is in low-S form. */
+const isLowS = (sig: Uint8Array): boolean => {
+  if (sig.length !== 64) return true; // not a P-256 raw sig — don't reject
+  return bytesToBigInt(sig.subarray(32, 64)) <= P256_HALF_N;
+};
+
+/**
+ * Build the signed-payload bytes for v2 signatures: length-prefixed fields
+ * so the boundary between `nonce`, `message`, and `timestamp` is unambiguous
+ * regardless of what characters appear inside them.
+ *
+ * Layout: `[0x02]` (version) +
+ *         `[u32 BE: nonceLen]` + `nonceBytes` +
+ *         `[u32 BE: messageLen]` + `messageBytes` +
+ *         `[u64 BE: timestamp]`
+ *
+ * The v1 (legacy) format `${nonce}:${message}:${timestamp}` is still accepted
+ * by verify() for backward compatibility — see `buildSignedPayloadV1`.
+ */
+const buildSignedPayloadV2 = (
+  nonce: string,
+  message: string,
+  timestamp: number,
+): Uint8Array => {
+  const nonceBytes = encoder.encode(nonce);
+  const msgBytes = encoder.encode(message);
+  const total = 1 + 4 + nonceBytes.length + 4 + msgBytes.length + 8;
+  const out = new Uint8Array(total);
+  const view = new DataView(out.buffer);
+  let o = 0;
+  out[o++] = SIG_VERSION_V2;
+  view.setUint32(o, nonceBytes.length, false);
+  o += 4;
+  out.set(nonceBytes, o);
+  o += nonceBytes.length;
+  view.setUint32(o, msgBytes.length, false);
+  o += 4;
+  out.set(msgBytes, o);
+  o += msgBytes.length;
+  // Timestamp as 64-bit big-endian (Date.now() fits in 53 bits, so high 32 is 0).
+  view.setBigUint64(o, BigInt(timestamp), false);
+  return out;
+};
+
+/** Legacy (v1) signed-payload bytes — kept for backward-compatible verify(). */
+const buildSignedPayloadV1 = (
+  nonce: string,
+  message: string,
+  timestamp: number,
+): Uint8Array => encoder.encode(`${nonce}:${message}:${timestamp}`);
 
 //====================================
 // COMMON UTILITIES
@@ -190,23 +322,31 @@ const sign = async (data: {
   nonce: string;
   timestamp: number;
   signature: string;
+  v: number;
 }> => {
   const nonce = globalThis.crypto.randomUUID();
   const timestamp = Date.now();
   const { message, privateKey } = data;
 
   const [ecdsaKey] = splitHybridKey(privateKey);
-  const messageBuffer = encoder.encode(`${nonce}:${message}:${timestamp}`);
-  const signature = await globalThis.crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    await deserializeKey(ecdsaKey, "ECDSA", ["sign"]),
-    messageBuffer as BufferSource,
+  // v2 length-prefixed payload (closes the field-boundary collision attack).
+  const messageBuffer = buildSignedPayloadV2(nonce, message, timestamp);
+  const rawSig = new Uint8Array(
+    await globalThis.crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      await deserializeKey(ecdsaKey, "ECDSA", ["sign"]),
+      messageBuffer as BufferSource,
+    ),
   );
+  // Normalize to low-S form so the same message can never be re-signed with
+  // an equivalent-but-different signature (ECDSA malleability mitigation).
+  const sig = ensureLowS(rawSig);
 
   return {
     nonce,
     timestamp,
-    signature: toBase64(new Uint8Array(signature)),
+    signature: toBase64(sig),
+    v: SIG_VERSION_V2,
   };
 };
 
@@ -229,25 +369,77 @@ const verify = async (data: {
   timestamp: number;
   message: string;
   maxAge?: number;
+  /** Signature format version. `2` (default for new signatures emitted by
+   *  `sign()`) uses length-prefixed payload bytes. Missing/`1` is the legacy
+   *  colon-separated format. */
+  v?: number;
+  /** When true, reject legacy (v=1) signatures and high-S ECDSA signatures.
+   *  Recommended for new deployments once all in-flight signatures have been
+   *  reissued in v2 form. Default false for backward compatibility. */
+  strict?: boolean;
 }): Promise<boolean> => {
-  const { signature, nonce, message, publicKey, timestamp, maxAge = DEFAULT_SIGNATURE_AGE } = data;
+  const {
+    signature,
+    nonce,
+    message,
+    publicKey,
+    timestamp,
+    maxAge = DEFAULT_SIGNATURE_AGE,
+    v,
+    strict = false,
+  } = data;
+
+  // Validate maxAge. NaN/Infinity would silently disable expiration, negative
+  // values would always reject — neither is what the caller intended.
+  if (!Number.isFinite(maxAge) || maxAge <= 0) {
+    throw new TypeError(
+      `crypto.verify: maxAge must be a positive finite number (got ${maxAge})`,
+    );
+  }
 
   const now = Date.now();
-
-  // Reject timestamps too far in the future (clock skew)
+  // Reject timestamps too far in the future (clock skew).
   if (timestamp > now + CLOCK_SKEW_TOLERANCE) return false;
-
-  // Reject timestamps too old
+  // Reject timestamps too old.
   if (now - timestamp > maxAge) return false;
 
   try {
     const [ecdsaKey] = splitHybridKey(publicKey);
-    return await globalThis.crypto.subtle.verify(
-      { name: "ECDSA", hash: "SHA-256" },
-      await deserializeKey(ecdsaKey, "ECDSA", ["verify"]),
-      fromBase64(signature) as BufferSource,
-      encoder.encode(`${nonce}:${message}:${timestamp}`) as BufferSource,
-    );
+    const cryptoKey = await deserializeKey(ecdsaKey, "ECDSA", ["verify"]);
+    const sigBytes = fromBase64(signature);
+
+    if (strict && !isLowS(sigBytes)) return false;
+
+    // Route based on declared format. Pass-through of `v` from sign()'s
+    // output is the secure call pattern — callers should forward all fields.
+    //
+    // - `v === 2` (explicit): v2-only. Rejects v1 forgeries against v2 sigs.
+    // - `v === 1` (explicit): v1-only. Legacy verification.
+    // - `v` missing: TRY BOTH. Maintains backward compat for callers that
+    //   don't forward `v`; same security level as v1 was. To prevent the
+    //   field-boundary attack on new code, either forward `v` from sign()'s
+    //   output OR pass `strict: true` (which rejects v1 entirely).
+    const verifyV2 = () =>
+      globalThis.crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        cryptoKey,
+        sigBytes as BufferSource,
+        buildSignedPayloadV2(nonce, message, timestamp) as BufferSource,
+      );
+    const verifyV1 = () =>
+      globalThis.crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        cryptoKey,
+        sigBytes as BufferSource,
+        buildSignedPayloadV1(nonce, message, timestamp) as BufferSource,
+      );
+
+    if (v === SIG_VERSION_V2) return await verifyV2();
+    if (strict) return false; // strict mode rejects legacy / version-less
+
+    if (v === 1) return await verifyV1();
+    // v missing: try v2 first (new format), then fall back to v1 (legacy).
+    return (await verifyV2()) || (await verifyV1());
   } catch {
     return false;
   }
@@ -325,22 +517,24 @@ const asymEncrypt = async (data: { payload: string; publicKey: string }): Promis
     256, // 32 bytes
   );
 
-  // Export public keys for binding
+  // Export ephemeral public key in raw form (consistent with the AAD binding
+  // below — v1 mixed raw/SPKI between AAD and header which was fragile).
   const ephPubRaw = new Uint8Array(await globalThis.crypto.subtle.exportKey("raw", ephemeral.publicKey));
 
-  // Create salt from ephemeral public key for context binding
-  const salt = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", ephPubRaw)).slice(0, 16);
+  // v2: full SHA-256 output (32 bytes) as HKDF salt for standards-aligned
+  // domain separation. v1 truncated to 16 bytes.
+  const salt = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", ephPubRaw));
 
   // Import shared secret for HKDF
   const sharedKey = await globalThis.crypto.subtle.importKey("raw", sharedSecret, "HKDF", false, ["deriveKey"]);
 
-  // Derive encryption key with HKDF
+  // Derive encryption key with HKDF (info string also versioned).
   const encryptKey = await globalThis.crypto.subtle.deriveKey(
     {
       name: "HKDF",
       hash: "SHA-256",
       salt,
-      info: encoder.encode("asym:v1:encrypt"),
+      info: encoder.encode("asym:v2:encrypt"),
     },
     sharedKey,
     { name: "AES-GCM", length: 256 },
@@ -348,7 +542,7 @@ const asymEncrypt = async (data: { payload: string; publicKey: string }): Promis
     ["encrypt"],
   );
 
-  // Encrypt with ephemeral public key as AAD
+  // Encrypt with ephemeral public key (raw form) as AAD.
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await globalThis.crypto.subtle.encrypt(
     {
@@ -360,13 +554,10 @@ const asymEncrypt = async (data: { payload: string; publicKey: string }): Promis
     encoder.encode(payload),
   );
 
-  // Format: version + ephemeral public key + iv + ciphertext
-  const version = 0x01;
-  const ephPubEncoded = toBase64(new Uint8Array(await globalThis.crypto.subtle.exportKey("spki", ephemeral.publicKey)));
-
-  const result = new Uint8Array([version, ...iv, ...new Uint8Array(encrypted)]);
-
-  return `${ephPubEncoded}:${toBase64(result)}`;
+  // v2 format: version + iv + ciphertext-with-tag. Ephemeral public key
+  // moves into the colon-prefixed envelope (also as raw, for consistency).
+  const result = new Uint8Array([ASYM_VERSION_V2, ...iv, ...new Uint8Array(encrypted)]);
+  return `${toBase64(ephPubRaw)}:${toBase64(result)}`;
 };
 
 /**
@@ -390,9 +581,14 @@ const asymDecrypt = async (data: { payload: string; privateKey: string }): Promi
   if (!ephPub || !encData) throw new Error("Invalid encrypted payload format");
   const encrypted = fromBase64(encData);
 
-  // Check version
+  if (encrypted.length < 14) {
+    throw new Error("asymmetric ciphertext too short");
+  }
+
+  // Auto-detect format version. v1 stores ephemeral key as SPKI + uses 16-byte
+  // salt + info "asym:v1:encrypt". v2 uses raw + full 32-byte salt + "asym:v2".
   const version = encrypted[0];
-  if (version !== 0x01) {
+  if (version !== ASYM_VERSION_V1 && version !== ASYM_VERSION_V2) {
     throw new Error(`Unsupported asymmetric encryption version: ${version}`);
   }
 
@@ -400,9 +596,9 @@ const asymDecrypt = async (data: { payload: string; privateKey: string }): Promi
   const iv = encrypted.subarray(1, 13);
   const ciphertext = encrypted.subarray(13);
 
-  // Import keys
+  // v1: SPKI header. v2: raw header (uncompressed point, 65 bytes for P-256).
   const ephemeralPub = await globalThis.crypto.subtle.importKey(
-    "spki" as const,
+    version === ASYM_VERSION_V1 ? ("spki" as const) : ("raw" as const),
     fromBase64(ephPub) as BufferSource,
     { name: "ECDH", namedCurve: "P-256" },
     true,
@@ -411,41 +607,29 @@ const asymDecrypt = async (data: { payload: string; privateKey: string }): Promi
 
   const myPrivateKey = await deserializeKey(ecdhKey, "ECDH", ["deriveBits"]);
 
-  // Derive shared secret via deriveBits
   const sharedSecret = await globalThis.crypto.subtle.deriveBits(
-    {
-      name: "ECDH",
-      public: ephemeralPub,
-    },
+    { name: "ECDH", public: ephemeralPub },
     myPrivateKey,
-    256, // 32 bytes
+    256,
   );
 
-  // Export ephemeral public key for salt
   const ephPubRaw = new Uint8Array(await globalThis.crypto.subtle.exportKey("raw", ephemeralPub));
 
-  // For decryption, we'll use just the ephemeral key for salt
-  // This is still secure as the ephemeral key is unique per encryption
-  const salt = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", ephPubRaw)).slice(0, 16);
+  // v1 truncated salt to 16 bytes; v2 keeps the full 32-byte SHA-256 output.
+  const fullSalt = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", ephPubRaw));
+  const salt = version === ASYM_VERSION_V1 ? fullSalt.slice(0, 16) : fullSalt;
+  const info = version === ASYM_VERSION_V1 ? "asym:v1:encrypt" : "asym:v2:encrypt";
 
-  // Import shared secret for HKDF
   const sharedKey = await globalThis.crypto.subtle.importKey("raw", sharedSecret, "HKDF", false, ["deriveKey"]);
 
-  // Derive decryption key with HKDF
   const decryptKey = await globalThis.crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt,
-      info: encoder.encode("asym:v1:encrypt"),
-    },
+    { name: "HKDF", hash: "SHA-256", salt, info: encoder.encode(info) },
     sharedKey,
     { name: "AES-GCM", length: 256 },
     false,
     ["decrypt"],
   );
 
-  // Decrypt with ephemeral key as AAD
   const decrypted = await globalThis.crypto.subtle.decrypt(
     {
       name: "AES-GCM",
@@ -541,6 +725,14 @@ const deriveKeyHKDF = async (key: string, salt: Uint8Array): Promise<CryptoKey> 
 const symEncrypt = async (data: { payload: string; key: string; stretched?: boolean }): Promise<string> => {
   const { payload, key, stretched = true } = data;
 
+  // Reject cryptographically-uninteresting HKDF key material upfront. PBKDF2
+  // tolerates short inputs because it stretches them; HKDF does not.
+  if (!stretched && key.length < HKDF_MIN_HEX_LEN) {
+    throw new Error(
+      `crypto.symmetric.encrypt: HKDF (stretched: false) requires at least ${HKDF_MIN_HEX_LEN / 2} bytes of hex key material (got ${key.length / 2})`,
+    );
+  }
+
   // Generate random salt
   const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
 
@@ -572,14 +764,30 @@ const symEncrypt = async (data: { payload: string; key: string; stretched?: bool
 const symDecrypt = async (data: { payload: string; key: string }): Promise<string> => {
   const encrypted = fromHex(data.payload);
 
-  // Check version
+  // Reject blobs that can't possibly hold a valid header + ciphertext.
+  if (encrypted.length < SYM_MIN_BLOB_LEN) {
+    throw new Error(
+      `Symmetric ciphertext too short: ${encrypted.length} bytes (minimum ${SYM_MIN_BLOB_LEN})`,
+    );
+  }
+
+  // Check version — both v1 and v2 share the same layout, only differ in
+  // intent/forward-compat for now. Strict version match prevents future
+  // confusion if v3 adds a different field layout.
   const version = encrypted[0];
-  if (version !== 0x01) {
+  if (version !== SYM_VERSION_V1 && version !== SYM_VERSION_V2) {
     throw new Error(`Unsupported encryption version: ${version}`);
   }
 
+  // Strict KDF-flag check. v1 accepted any non-0x01 byte as HKDF, which
+  // silently re-routed corrupted blobs through the wrong KDF.
+  const flag = encrypted[1];
+  if (flag !== 0x00 && flag !== 0x01) {
+    throw new Error(`Unsupported KDF flag: 0x${flag!.toString(16)}`);
+  }
+  const stretched = flag === 0x01;
+
   // Parse format: [version (1 byte)][flag (1 byte)][salt (16 bytes)][iv (12 bytes)][ciphertext]
-  const stretched = encrypted[1] === 0x01;
   const salt = encrypted.subarray(2, 18);
   const iv = encrypted.subarray(18, 30);
   const ciphertext = encrypted.subarray(30);
@@ -697,33 +905,54 @@ const createTotp = async (data: {
  * const ok = await totp.verify({ token: "123456", secret: base32Secret });
  */
 const verifyTotp = async (data: { token: string; secret: string; window?: number }): Promise<boolean> => {
-  const { token, secret, window = 1 } = data;
+  const { token, secret, window: rawWindow = 1 } = data;
+
+  // Validate window upfront. Default RFC value is 1; we clamp to a max of
+  // TOTP_MAX_WINDOW to prevent DoS via `window: 1e7` (millions of HMACs).
+  if (!Number.isFinite(rawWindow) || rawWindow < 0) {
+    throw new TypeError(
+      `crypto.totp.verify: window must be a non-negative finite number (got ${rawWindow})`,
+    );
+  }
+  const window = Math.min(Math.floor(rawWindow), TOTP_MAX_WINDOW);
+
+  // Decode the secret BEFORE the try/catch so a malformed Base32 secret
+  // throws an InvalidSecretError instead of being swallowed as "wrong token".
+  // Programmer mistakes (typos in secret material) should be loud, not silent.
+  const secretBytes = fromBase32(secret);
 
   try {
-    const secretBytes = fromBase32(secret);
     const timeStep = 30; // 30 seconds per step
     const currentTime = Math.floor(Date.now() / 1000);
     const counter = BigInt(Math.floor(currentTime / timeStep));
 
-    // Check current and adjacent time windows
+    // Constant-time accumulator across ALL window steps. We can't short-
+    // circuit on first match without leaking timing — instead OR every step's
+    // mismatch flag into `mismatch`, then check zero at the end.
+    let mismatch = 1; // 1 = no match yet, 0 = match found
     for (let i = -window; i <= window; i++) {
       const testCounter = counter + BigInt(i);
       const hmac = await generateHMAC(secretBytes, testCounter);
-      const testToken = truncate(hmac, 6);
+      const testToken = truncate(hmac, TOTP_TOKEN_LEN);
 
-      // Constant-time comparison to prevent timing attacks
-      if (token.length === testToken.length) {
-        let match = 0;
-        for (let j = 0; j < token.length; j++) {
-          match |= token.charCodeAt(j) ^ testToken.charCodeAt(j);
-        }
-        if (match === 0) return true;
+      // Uniform-length constant-time comparison: always TOTP_TOKEN_LEN
+      // iterations regardless of input length. Length mismatches still result
+      // in mismatch=1, but the timing is identical to a true comparison.
+      let stepMismatch = token.length !== testToken.length ? 1 : 0;
+      for (let j = 0; j < TOTP_TOKEN_LEN; j++) {
+        const a = j < token.length ? token.charCodeAt(j) : 0;
+        const b = j < testToken.length ? testToken.charCodeAt(j) : 0;
+        stepMismatch |= a ^ b;
       }
+      // If THIS step matched (stepMismatch === 0), clear the overall flag.
+      // Otherwise leave it as-is. This is the branchless equivalent of
+      // `if (stepMismatch === 0) mismatch = 0;`.
+      mismatch &= stepMismatch === 0 ? 0 : 1;
     }
-
-    return false;
+    return mismatch === 0;
   } catch {
-    // Invalid base32 secrets and crypto errors → verification fails
+    // Genuine crypto failures (HMAC errors etc.) → verification fails.
+    // Base32 errors already threw above (intentional, not swallowed).
     return false;
   }
 };
