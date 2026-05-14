@@ -73,8 +73,15 @@ export const getPermission = (): NotificationPermissionState => {
  */
 export const requestPermission = async (): Promise<boolean> => {
   if (!hasNotificationAPI()) return false;
-  const result = await Notification.requestPermission();
-  return result === "granted";
+  try {
+    const result = await Notification.requestPermission();
+    return result === "granted";
+  } catch {
+    // Restricted contexts (e.g. cross-origin iframes, sandboxed environments)
+    // can throw or reject. Per the documented contract we surface that as
+    // "permission denied" rather than letting the rejection escape.
+    return false;
+  }
 };
 
 /**

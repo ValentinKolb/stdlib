@@ -89,10 +89,10 @@ describe("kvStore", () => {
       await kvStore.set("arr", [1, 2, 3]);
       await kvStore.set("bool", true);
 
-      expect(await kvStore.get("str")).toBe("hello");
-      expect(await kvStore.get("num")).toBe(42);
-      expect(await kvStore.get("arr")).toEqual([1, 2, 3]);
-      expect(await kvStore.get("bool")).toBe(true);
+      expect(await kvStore.get<string>("str")).toBe("hello");
+      expect(await kvStore.get<number>("num")).toBe(42);
+      expect(await kvStore.get<number[]>("arr")).toEqual([1, 2, 3]);
+      expect(await kvStore.get<boolean>("bool")).toBe(true);
     });
 
     it("stores null correctly", async () => {
@@ -103,7 +103,7 @@ describe("kvStore", () => {
     it("overwrites existing values", async () => {
       await kvStore.set("key", "first");
       await kvStore.set("key", "second");
-      expect(await kvStore.get("key")).toBe("second");
+      expect(await kvStore.get<string>("key")).toBe("second");
     });
 
     it("returns undefined for missing keys", async () => {
@@ -297,7 +297,7 @@ describe("kvStore", () => {
       await kvStore.set("a", 1);
       await kvStore.clear();
       await kvStore.set("b", 2);
-      expect(await kvStore.get("b")).toBe(2);
+      expect(await kvStore.get<number>("b")).toBe(2);
       expect(await kvStore.size()).toBe(1);
     });
   });
@@ -422,6 +422,74 @@ describe("kvStore", () => {
       expect(typeof kvStore.delete).toBe("function");
       expect(typeof kvStore.clear).toBe("function");
       expect(typeof kvStore.watch).toBe("function");
+      expect(typeof kvStore.destroy).toBe("function");
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Regression: audit-pass fixes
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe("regression — undefined / non-serializable values", () => {
+    it("rejects top-level undefined with a clear TypeError", async () => {
+      await expect(kvStore.set("k", undefined)).rejects.toThrow(/JSON-serializable/);
+      // The key must NOT have been created.
+      expect(await kvStore.has("k")).toBe(false);
+    });
+
+    it("rejects functions", async () => {
+      await expect(kvStore.set("k", () => 1)).rejects.toThrow(TypeError);
+    });
+
+    it("rejects symbols", async () => {
+      await expect(kvStore.set("k", Symbol("x") as unknown as object)).rejects.toThrow(TypeError);
+    });
+  });
+
+  describe("regression — concurrent same-tab writes", () => {
+    it("does not lose writes when two set() calls overlap", async () => {
+      // Parallel writes to different keys: both must persist regardless of
+      // which one acquires the lock first.
+      await Promise.all([kvStore.set("a", 1), kvStore.set("b", 2)]);
+      expect(await kvStore.get<number>("a")).toBe(1);
+      expect(await kvStore.get<number>("b")).toBe(2);
+    });
+
+    it("last-write-wins for parallel writes to the same key", async () => {
+      await Promise.all([kvStore.set("k", 1), kvStore.set("k", 2)]);
+      const v = await kvStore.get<number>("k");
+      expect([1, 2]).toContain(v as number);
+    });
+  });
+
+  describe("regression — del on missing key", () => {
+    it("does not emit delete events for keys that never existed", async () => {
+      const events: string[] = [];
+      const unwatch = kvStore.watch((e) => events.push(`${e.type}:${e.key}`));
+      await kvStore.delete("nope");
+      unwatch();
+      expect(events).toEqual([]);
+    });
+  });
+
+  describe("regression — clear fires for prefix watchers", () => {
+    it("notifies prefix-filtered watchers on clear()", async () => {
+      const events: string[] = [];
+      const unwatch = kvStore.watch((e) => events.push(e.type), "user:");
+      await kvStore.set("user:1", { name: "A" });
+      await kvStore.clear();
+      unwatch();
+      expect(events).toContain("clear");
+    });
+  });
+
+  describe("regression — corrupt index surfaces error", () => {
+    it("throws on corrupt index instead of silently resetting", async () => {
+      await kvStore.set("u", 1);
+      // Corrupt the on-disk index.
+      storage.set(".kvstore/_index.json", new TextEncoder().encode("not-json {"));
+      kvStore.destroy(); // Drop in-memory cache so next get() re-reads.
+      await expect(kvStore.get("u")).rejects.toThrow(/corrupt/);
     });
   });
 });

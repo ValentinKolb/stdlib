@@ -53,13 +53,33 @@ type Progress = { current: number; total: number; percent: number };
 // Internal Helpers
 // ==========================
 
+/** Validate that w/h are positive finite integers. Throws a clear error
+ *  rather than letting a bad value propagate to a 0×0 canvas, NaN/Infinity
+ *  in DOM exceptions, or browser-specific failures. */
+const assertDims = (w: number, h: number, fn: string): void => {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+    throw new RangeError(
+      `images.${fn}: width and height must be positive finite numbers (got ${w}×${h})`,
+    );
+  }
+};
+
 /** Create canvas with specified dimensions. */
 const mkCanvas = (w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] => {
+  assertDims(w, h, "mkCanvas");
   const c = Object.assign(document.createElement("canvas"), {
     width: w,
     height: h,
   });
-  return [c, c.getContext("2d")!];
+  const ctx = c.getContext("2d");
+  if (!ctx) {
+    // getContext returns null when too many live canvas contexts exist
+    // (Chrome ~300 cap), or when the page lost hardware acceleration.
+    throw new Error(
+      "images: could not acquire 2D context (too many canvases or accelerated context lost)",
+    );
+  }
+  return [c, ctx];
 };
 
 /** Create ImgData by drawing on a new canvas with given dimensions. */
@@ -94,26 +114,42 @@ const create = async (source: Source): Promise<ImgData> => {
   // Canvas can be directly copied
   if (source instanceof HTMLCanvasElement) return draw(source.width, source.height, (ctx) => ctx.drawImage(source, 0, 0));
 
-  // Load or use existing HTMLImageElement
-  const img =
-    source instanceof HTMLImageElement
-      ? source
-      : await (async () => {
-          const i = Object.assign(new Image(), { crossOrigin: "anonymous" });
-          const url = source instanceof Blob ? URL.createObjectURL(source) : source;
-          i.src = url;
-          try {
-            await new Promise<void>((res, rej) => {
-              i.onload = () => res();
-              i.onerror = () => rej(new Error("Failed to load image"));
-            });
-          } finally {
-            if (source instanceof Blob) URL.revokeObjectURL(url);
-          }
-          return i;
-        })();
+  // Existing HTMLImageElement: if it's still loading, await load before
+  // drawing — otherwise the canvas would be blank.
+  if (source instanceof HTMLImageElement) {
+    if (!source.complete || source.naturalWidth === 0) {
+      await new Promise<void>((res, rej) => {
+        source.addEventListener("load", () => res(), { once: true });
+        source.addEventListener(
+          "error",
+          () => rej(new Error("Failed to load HTMLImageElement")),
+          { once: true },
+        );
+      });
+    }
+    return draw(source.naturalWidth || source.width, source.naturalHeight || source.height, (ctx) =>
+      ctx.drawImage(source, 0, 0),
+    );
+  }
 
-  return draw(img.width, img.height, (ctx) => ctx.drawImage(img, 0, 0));
+  // Load from File/Blob/URL. Attach handlers BEFORE setting src so we never
+  // miss the load event for cached or data: URLs (which can fire synchronously).
+  const i = Object.assign(new Image(), { crossOrigin: "anonymous" });
+  const url = source instanceof Blob ? URL.createObjectURL(source) : source;
+  const loadPromise = new Promise<void>((res, rej) => {
+    i.onload = () => res();
+    i.onerror = () => rej(new Error("Failed to load image"));
+  });
+  i.src = url;
+  try {
+    await loadPromise;
+  } finally {
+    if (source instanceof Blob) URL.revokeObjectURL(url);
+  }
+
+  return draw(i.naturalWidth || i.width, i.naturalHeight || i.height, (ctx) =>
+    ctx.drawImage(i, 0, 0),
+  );
 };
 
 // ==========================
@@ -177,6 +213,13 @@ const resize =
   async (data) => {
     const d = await resolve(data);
     if (!width && !height) return d;
+    // Reject invalid inputs early. Was: width: 0 silently produced a 0×0 canvas.
+    if (width !== undefined && (!Number.isFinite(width) || width <= 0)) {
+      throw new RangeError(`images.resize: invalid width ${width}`);
+    }
+    if (height !== undefined && (!Number.isFinite(height) || height <= 0)) {
+      throw new RangeError(`images.resize: invalid height ${height}`);
+    }
 
     // Calculate target dimensions maintaining aspect ratio if one dimension missing
     const ar = d.width / d.height;
@@ -213,6 +256,11 @@ const resize =
 const crop =
   (x: number, y: number, w: number, h: number): Transform =>
   async (data) => {
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+      throw new RangeError(
+        `images.crop: w/h must be positive finite numbers (got ${w}×${h})`,
+      );
+    }
     const d = await resolve(data);
     return draw(w, h, (ctx) => ctx.drawImage(d.canvas, x, y, w, h, 0, 0, w, h));
   };

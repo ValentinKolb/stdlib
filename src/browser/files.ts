@@ -176,7 +176,10 @@ export const downloadFileFromContent = (
   link.click();
   document.body.removeChild(link);
 
-  URL.revokeObjectURL(url);
+  // Defer revocation: revoking immediately can race the browser's download
+  // fetch in some implementations (especially when the tab is busy), causing
+  // the download to fail silently.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 
 // ============ ZIP Utilities ============
@@ -221,6 +224,22 @@ for (let i = 0; i < 256; i++) {
   crc32Table[i] = c;
 }
 
+/**
+ * Ensure a Uint8Array is backed by a plain ArrayBuffer (not SharedArrayBuffer).
+ * Modern DOM APIs (`WritableStream.write`, `Blob` constructor in strict TS)
+ * require `Uint8Array<ArrayBuffer>` not `Uint8Array<ArrayBufferLike>`. This
+ * helper narrows the type and copies through a fresh ArrayBuffer when needed.
+ */
+const asPlainBuffer = (data: Uint8Array): Uint8Array<ArrayBuffer> => {
+  if (data.buffer instanceof ArrayBuffer) {
+    return data as Uint8Array<ArrayBuffer>;
+  }
+  // SharedArrayBuffer-backed: copy to a plain ArrayBuffer.
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  return copy;
+};
+
 /** Compute CRC32 checksum for a Uint8Array. */
 const crc32 = (data: Uint8Array): number => {
   let crc = 0xFFFFFFFF;
@@ -232,7 +251,7 @@ const crc32 = (data: Uint8Array): number => {
 const deflate = async (data: Uint8Array): Promise<Uint8Array> => {
   const cs = new CompressionStream("deflate-raw");
   const writer = cs.writable.getWriter();
-  writer.write(data);
+  writer.write(asPlainBuffer(data));
   writer.close();
   return new Uint8Array(await new Response(cs.readable).arrayBuffer());
 };
@@ -241,7 +260,7 @@ const deflate = async (data: Uint8Array): Promise<Uint8Array> => {
 const inflate = async (data: Uint8Array): Promise<Uint8Array> => {
   const ds = new DecompressionStream("deflate-raw");
   const writer = ds.writable.getWriter();
-  writer.write(data);
+  writer.write(asPlainBuffer(data));
   writer.close();
   return new Uint8Array(await new Response(ds.readable).arrayBuffer());
 };
@@ -280,9 +299,20 @@ export const createZip = async (
     method: number; // 0 = stored, 8 = deflated
   };
 
+  // Reject Zip-Slip-style filenames at archive-creation time. Downstream
+  // extractors (including our own `extractZip`) won't see absolute paths,
+  // path-traversal segments, or backslashes — all common Zip-Slip vectors.
+  const ZIP_FILENAME_FORBIDDEN = /(^[/\\])|(\\)|(^|[/])\.\.([/]|$)/;
+
   const entries: ProcessedEntry[] = [];
   for (let i = 0; i < total; i++) {
     const { filename, source } = files[i]!;
+    if (ZIP_FILENAME_FORBIDDEN.test(filename)) {
+      throw new Error(
+        `createZip: refusing to add unsafe filename ${JSON.stringify(filename)} ` +
+          "(absolute path, backslash, or '..' segment).",
+      );
+    }
     const nameBytes = encoder.encode(filename);
     const rawData = await toUint8Array(source);
     const crcValue = crc32(rawData);
@@ -305,10 +335,34 @@ export const createZip = async (
   // Calculate total size
   let localHeadersSize = 0;
   let centralDirSize = 0;
+  let totalUncompressed = 0;
   for (const entry of entries) {
     localHeadersSize += 30 + entry.nameBytes.length + entry.compressedData.length;
     centralDirSize += 46 + entry.nameBytes.length;
+    totalUncompressed += entry.rawData.length;
   }
+
+  // ZIP (no ZIP64) restrictions. Throw a clear error rather than silently
+  // emit a corrupt archive.
+  if (entries.length > 0xffff) {
+    throw new Error(
+      `createZip: too many files (${entries.length}); ZIP64 not supported (max ${0xffff}).`,
+    );
+  }
+  if (totalUncompressed > 0xffffffff) {
+    throw new Error(
+      `createZip: total uncompressed size exceeds 4 GiB; ZIP64 not supported.`,
+    );
+  }
+  for (const entry of entries) {
+    if (
+      entry.compressedData.length > 0xffffffff ||
+      entry.rawData.length > 0xffffffff
+    ) {
+      throw new Error("createZip: a single file exceeds 4 GiB; ZIP64 not supported.");
+    }
+  }
+
   const eocdSize = 22;
   const totalSize = localHeadersSize + centralDirSize + eocdSize;
 
@@ -329,8 +383,9 @@ export const createZip = async (
     view.setUint32(localOffset, 0x04034b50, true); localOffset += 4;
     // Version needed to extract
     view.setUint16(localOffset, 20, true); localOffset += 2;
-    // General purpose bit flag
-    view.setUint16(localOffset, 0, true); localOffset += 2;
+    // General purpose bit flag — bit 11 set so the filename is interpreted
+    // as UTF-8 (we always encode via TextEncoder which is UTF-8).
+    view.setUint16(localOffset, 0x0800, true); localOffset += 2;
     // Compression method
     view.setUint16(localOffset, entry.method, true); localOffset += 2;
     // Last mod file time & date (zero)
@@ -364,8 +419,8 @@ export const createZip = async (
     view.setUint16(cdPos, 20, true); cdPos += 2;
     // Version needed to extract
     view.setUint16(cdPos, 20, true); cdPos += 2;
-    // General purpose bit flag
-    view.setUint16(cdPos, 0, true); cdPos += 2;
+    // General purpose bit flag (matches the local header — UTF-8 filename).
+    view.setUint16(cdPos, 0x0800, true); cdPos += 2;
     // Compression method
     view.setUint16(cdPos, entry.method, true); cdPos += 2;
     // Last mod file time & date (zero)
@@ -432,10 +487,21 @@ export const createZip = async (
  */
 export const extractZip = async (
   data: Uint8Array,
-  options?: { onProgress?: (progress: Progress) => void },
+  options?: {
+    onProgress?: (progress: Progress) => void;
+    /** Maximum number of entries to extract. Defaults to 65 535 (ZIP spec).
+     *  Throws when the archive declares more entries — protects against
+     *  zip-bomb-style abuse where a tiny archive declares millions of files. */
+    maxEntries?: number;
+    /** Maximum total decompressed bytes to produce. Defaults to 256 MiB.
+     *  Throws once decompression output exceeds this — second zip-bomb gate. */
+    maxBytes?: number;
+  },
 ): Promise<{ filename: string; data: Uint8Array }[]> => {
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const decoder = new TextDecoder();
+  const maxEntries = options?.maxEntries ?? 0xffff;
+  const maxBytes = options?.maxBytes ?? 256 * 1024 * 1024;
 
   // Find End of Central Directory record (scan backwards for signature 0x06054b50)
   let eocdOffset = -1;
@@ -450,8 +516,15 @@ export const extractZip = async (
   const entryCount = view.getUint16(eocdOffset + 10, true);
   const centralDirOffset = view.getUint32(eocdOffset + 16, true);
 
+  if (entryCount > maxEntries) {
+    throw new Error(
+      `extractZip: archive declares ${entryCount} entries; refusing (max ${maxEntries}).`,
+    );
+  }
+
   const results: { filename: string; data: Uint8Array }[] = [];
   let cdPos = centralDirOffset;
+  let bytesProduced = 0;
 
   for (let i = 0; i < entryCount; i++) {
     if (view.getUint32(cdPos, true) !== 0x02014b50) {
@@ -460,6 +533,7 @@ export const extractZip = async (
 
     const method = view.getUint16(cdPos + 10, true);
     const compressedSize = view.getUint32(cdPos + 20, true);
+    const uncompressedSize = view.getUint32(cdPos + 24, true);
     const filenameLen = view.getUint16(cdPos + 28, true);
     const extraLen = view.getUint16(cdPos + 30, true);
     const commentLen = view.getUint16(cdPos + 32, true);
@@ -469,10 +543,23 @@ export const extractZip = async (
 
     // Skip directory entries
     if (!filename.endsWith("/")) {
-      // Read local file header to get actual extra field length (may differ from central dir)
+      // Read filename + extra length from the LOCAL header. The local
+      // header may declare different lengths than the central directory
+      // (e.g. macOS Finder, Python `zipfile` add extended timestamps in
+      // local extras only). Using the central-directory lengths here would
+      // miscompute the data offset and corrupt every file.
+      const localFilenameLen = view.getUint16(localHeaderOffset + 26, true);
       const localExtraLen = view.getUint16(localHeaderOffset + 28, true);
-      const dataStart = localHeaderOffset + 30 + filenameLen + localExtraLen;
+      const dataStart = localHeaderOffset + 30 + localFilenameLen + localExtraLen;
       const compressedData = data.subarray(dataStart, dataStart + compressedSize);
+
+      // Pre-flight bomb check: refuse before inflating if the declared
+      // uncompressed size would already exceed the budget.
+      if (bytesProduced + uncompressedSize > maxBytes) {
+        throw new Error(
+          `extractZip: declared uncompressed size exceeds maxBytes (${maxBytes}).`,
+        );
+      }
 
       let fileData: Uint8Array;
       if (method === 0) {
@@ -483,6 +570,14 @@ export const extractZip = async (
         fileData = await inflate(compressedData);
       } else {
         throw new Error(`Unsupported compression method ${method} for ${filename}`);
+      }
+
+      // Post-decompress check (covers cases where the declared size lied).
+      bytesProduced += fileData.length;
+      if (bytesProduced > maxBytes) {
+        throw new Error(
+          `extractZip: actual decompressed output exceeds maxBytes (${maxBytes}).`,
+        );
       }
 
       results.push({ filename, data: fileData });
@@ -814,7 +909,7 @@ export const checkMimeType = (fileOrType: File | string, accept: string): boolea
  */
 export const compress = async (data: Uint8Array): Promise<Uint8Array> =>
   new Uint8Array(await new Response(
-    new Blob([data]).stream().pipeThrough(new CompressionStream("gzip")),
+    new Blob([asPlainBuffer(data)]).stream().pipeThrough(new CompressionStream("gzip")),
   ).arrayBuffer());
 
 /**
@@ -825,7 +920,7 @@ export const compress = async (data: Uint8Array): Promise<Uint8Array> =>
  */
 export const decompress = async (data: Uint8Array): Promise<Uint8Array> =>
   new Uint8Array(await new Response(
-    new Blob([data]).stream().pipeThrough(new DecompressionStream("gzip")),
+    new Blob([asPlainBuffer(data)]).stream().pipeThrough(new DecompressionStream("gzip")),
   ).arrayBuffer());
 
 // ============ OPFS (Origin Private File System) ============
@@ -897,18 +992,24 @@ export const OPFS = {
    * if (data) processData(data);
    */
   read: async (name: string): Promise<Uint8Array | undefined> => {
+    const segments = name.split("/").filter(Boolean);
+    if (segments.length === 0) throw new Error("Invalid path: empty");
+    const fileName = segments.pop()!;
     try {
-      const segments = name.split("/").filter(Boolean);
-      if (segments.length === 0) throw new Error("Invalid path: empty");
-      const fileName = segments.pop()!;
       const dir = await OPFS.getDirHandle(segments);
-
       const fileHandle = await dir.getFileHandle(fileName);
       const file = await fileHandle.getFile();
       const buffer = await file.arrayBuffer();
       return new Uint8Array(buffer);
-    } catch {
-      return undefined;
+    } catch (err) {
+      // "File not found" is the documented sentinel for `undefined`. Other
+      // failures (permissions, quota, corruption) are real errors and must
+      // propagate so callers can surface them — silently returning undefined
+      // for them was hiding important failures.
+      if (err instanceof DOMException && err.name === "NotFoundError") {
+        return undefined;
+      }
+      throw err;
     }
   },
 

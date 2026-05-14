@@ -37,6 +37,18 @@ export const readJsonCookie = <T>(name: string, defaultValue: T): T => {
 };
 
 /**
+ * Validate that a cookie name is safe to interpolate into a Set-Cookie /
+ * document.cookie header. Names containing `;`, `=`, whitespace, or control
+ * chars can write/delete the wrong cookie or inject attributes.
+ */
+const assertSafeCookieName = (name: string): void => {
+  // RFC 6265 cookie-name = token (no separators / control chars / whitespace).
+  if (!name || /[;=,\s\x00-\x1f\x7f]/.test(name)) {
+    throw new Error(`cookies: invalid cookie name ${JSON.stringify(name)}`);
+  }
+};
+
+/**
  * Writes a value as a JSON-encoded cookie.
  *
  * The value is `JSON.stringify`'d and URI-encoded. Defaults: `path=/`,
@@ -44,6 +56,7 @@ export const readJsonCookie = <T>(name: string, defaultValue: T): T => {
  * when the page is served over HTTPS.
  */
 export const writeJsonCookie = <T>(name: string, data: T, maxAge = DEFAULT_MAX_AGE, secure = location.protocol === "https:") => {
+  assertSafeCookieName(name);
   document.cookie = `${name}=${encodeURIComponent(JSON.stringify(data))}; path=/; max-age=${maxAge}; SameSite=Lax${secure ? "; Secure" : ""}`;
 };
 
@@ -51,12 +64,21 @@ export const writeJsonCookie = <T>(name: string, data: T, maxAge = DEFAULT_MAX_A
  * Reads a raw string cookie value.
  *
  * Returns the URI-decoded value, or `null` if the cookie does not exist.
+ * Returns the raw (still-encoded) value when decoding fails — a malformed
+ * `%`-sequence written by another producer must not crash unrelated callers.
  */
 export const readCookie = (name: string): string | null => {
   const cookie = document.cookie.split("; ").find((c) => c.startsWith(`${name}=`));
   if (cookie) {
     const eqIndex = cookie.indexOf("=");
-    return decodeURIComponent(cookie.substring(eqIndex + 1));
+    const raw = cookie.substring(eqIndex + 1);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      // Malformed percent-encoding from a third-party cookie — return the
+      // raw string instead of throwing URIError.
+      return raw;
+    }
   }
   return null;
 };
@@ -68,6 +90,7 @@ export const readCookie = (name: string): string | null => {
  * `path=/`, `SameSite=Lax`, 1-year `max-age`, auto `Secure` on HTTPS.
  */
 export const writeCookie = (name: string, value: string, maxAge = DEFAULT_MAX_AGE, secure = location.protocol === "https:") => {
+  assertSafeCookieName(name);
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax${secure ? "; Secure" : ""}`;
 };
 
@@ -78,6 +101,7 @@ export const writeCookie = (name: string, value: string, maxAge = DEFAULT_MAX_AG
  * set on `path=/` with `SameSite=Lax`.
  */
 export const deleteCookie = (name: string) => {
+  assertSafeCookieName(name);
   document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
 };
 

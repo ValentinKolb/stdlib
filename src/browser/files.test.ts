@@ -334,6 +334,59 @@ describe("createZip / extractZip", () => {
     expect(map.get("a.txt")).toBe("Content A");
     expect(map.get("b.txt")).toBe("Content B");
   });
+
+  // Regression: Zip Slip protection at archive-creation time.
+  it("rejects unsafe filenames during createZip", async () => {
+    await expect(
+      createZip([{ filename: "../escape.txt", source: "x" }]),
+    ).rejects.toThrow(/refusing to add unsafe filename/);
+    await expect(
+      createZip([{ filename: "/abs.txt", source: "x" }]),
+    ).rejects.toThrow();
+    await expect(
+      createZip([{ filename: "back\\slash.txt", source: "x" }]),
+    ).rejects.toThrow();
+  });
+
+  // Regression: extractZip uses LOCAL header filename length (different
+  // archives put extended timestamps in local extras). This test creates
+  // a normal zip and just verifies it still extracts; a synthetic test
+  // with mismatched lengths would require manual byte-poking.
+  it("extracts archives whose local-header lengths may differ from CD", async () => {
+    const zip = await createZip([{ filename: "ok.txt", source: "ok" }]);
+    const extracted = await extractZip(zip);
+    expect(extracted).toHaveLength(1);
+    expect(new TextDecoder().decode(extracted[0]!.data)).toBe("ok");
+  });
+
+  // Regression: zip-bomb caps.
+  it("rejects archives whose declared entry count exceeds maxEntries", async () => {
+    const zip = await createZip([
+      { filename: "a.txt", source: "1" },
+      { filename: "b.txt", source: "2" },
+    ]);
+    await expect(extractZip(zip, { maxEntries: 1 })).rejects.toThrow(/declares.*entries/);
+  });
+
+  it("rejects extraction once total declared size exceeds maxBytes", async () => {
+    const big = new Uint8Array(64).fill(65);
+    const zip = await createZip([
+      { filename: "a.bin", source: big },
+      { filename: "b.bin", source: big },
+    ]);
+    await expect(extractZip(zip, { maxBytes: 100 })).rejects.toThrow(/maxBytes/);
+  });
+
+  // Regression: UTF-8 general-purpose bit (0x0800) is set on filenames so
+  // standards-compliant unzip tools decode non-ASCII names correctly.
+  it("sets the UTF-8 general-purpose flag on local + central headers", async () => {
+    const zip = await createZip([{ filename: "ü.txt", source: "x" }]);
+    // Local header GP flag is at offset 6 of the local file header; the
+    // archive starts with the local header. setUint16 little-endian at
+    // offset 6 → bytes [zip[6], zip[7]] = [0x00, 0x08] for 0x0800.
+    expect(zip[6]).toBe(0x00);
+    expect(zip[7]).toBe(0x08);
+  });
 });
 
 // ==========================

@@ -15,7 +15,7 @@
  * theme.toggle();      // switches back to "light"
  */
 
-import { writeCookie } from "./cookies";
+import { readCookie, writeCookie } from "./cookies";
 
 export type ThemeMode = "light" | "dark";
 
@@ -28,6 +28,23 @@ export type ThemeMode = "light" | "dark";
 const getCurrent = (): ThemeMode => {
   if (typeof document === "undefined") return "light";
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
+};
+
+/**
+ * Read the persisted theme preference from the `theme` cookie.
+ *
+ * Returns `"dark"` or `"light"` if the cookie holds a valid value, or
+ * `null` if no theme has been persisted yet (caller can fall back to
+ * `prefers-color-scheme` / a default in that case).
+ *
+ * Useful in client-only apps that didn't apply the theme class server-side
+ * and need to restore the preference on hydration.
+ */
+const getPersisted = (): ThemeMode | null => {
+  if (typeof document === "undefined") return null;
+  const raw = readCookie("theme");
+  if (raw === "dark" || raw === "light") return raw;
+  return null;
 };
 
 /**
@@ -62,6 +79,7 @@ const toggle = (): ThemeMode => {
 
 export const theme = {
   getCurrent,
+  getPersisted,
   set,
   toggle,
 } as const;

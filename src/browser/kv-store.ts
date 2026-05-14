@@ -90,10 +90,18 @@ const dec = new TextDecoder();
 
 /** In-memory index: original key → { hash, entry }. Null until first access. */
 let cache: Map<string, CacheItem> | null = null;
+/** Promise of an in-flight first-load. Concurrent ensureCache() callers share
+ *  this promise instead of each kicking off their own loadIndex() (was a
+ *  duplicate-I/O race on cold-start). */
+let cacheLoading: Promise<Map<string, CacheItem>> | null = null;
 let indexVersion = 0;
 
 const watchers = new Set<WatcherEntry>();
 let bc: BroadcastChannel | null = null;
+
+/** Promise chain used to serialise writes when Web Locks are unavailable.
+ *  Same-tab concurrency safety only — cross-tab requires Web Locks. */
+let fallbackLockChain: Promise<unknown> = Promise.resolve();
 
 // ─── Internals: Hashing ─────────────────────────────────────────────────────────
 
@@ -119,18 +127,33 @@ const withLock = async <T>(fn: () => Promise<T>): Promise<T> => {
   if (typeof navigator !== "undefined" && "locks" in navigator) {
     return navigator.locks.request(LOCK_NAME, fn);
   }
-  return fn();
+  // Fallback: chain through a single Promise so concurrent in-tab writes
+  // are at least serialised. Doesn't help across tabs (that's what Web
+  // Locks are for) but prevents same-tab race-induced data loss.
+  const next = fallbackLockChain.then(fn, fn);
+  fallbackLockChain = next.catch(() => {});
+  return next;
 };
 
 // ─── Internals: Index Persistence ───────────────────────────────────────────────
 
-/** Load the index from OPFS. Returns an empty index on missing/corrupt file. */
+/**
+ * Load the index from OPFS. Missing file → empty index (legitimate first-run).
+ * Corrupt JSON → throw, so the caller knows the store can't be trusted rather
+ * than silently resetting and orphaning every existing blob.
+ *
+ * Permission / quota / other DOMException errors propagate from OPFS.read.
+ */
 const loadIndex = async (): Promise<StoreIndex> => {
+  const data = await OPFS.read(INDEX_PATH);
+  if (!data) return { v: 0, entries: {} };
   try {
-    const data = await OPFS.read(INDEX_PATH);
-    if (data) return JSON.parse(dec.decode(data)) as StoreIndex;
-  } catch { /* missing or corrupt — start fresh */ }
-  return { v: 0, entries: {} };
+    return JSON.parse(dec.decode(data)) as StoreIndex;
+  } catch (e) {
+    throw new Error(
+      `kvStore: index file at ${INDEX_PATH} is corrupt: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 };
 
 /** Persist the current in-memory cache to OPFS as the new index. */
@@ -155,14 +178,25 @@ const rebuildCache = (index: StoreIndex): void => {
 
 /**
  * Ensure the in-memory cache is populated.
- * First call loads from disk; subsequent calls return immediately.
+ *
+ * Concurrent first-time callers share the same in-flight loadIndex() — the
+ * previous implementation kicked off a separate load per caller, wasting I/O
+ * on cold start. The pending promise is cleared once it resolves so future
+ * cache invalidations (e.g. via BroadcastChannel) can trigger a fresh load.
  */
 const ensureCache = async (): Promise<Map<string, CacheItem>> => {
-  if (cache === null) {
-    rebuildCache(await loadIndex());
-    initBC();
-  }
-  return cache!;
+  if (cache !== null) return cache;
+  if (cacheLoading) return cacheLoading;
+  cacheLoading = (async () => {
+    try {
+      rebuildCache(await loadIndex());
+      initBC();
+      return cache!;
+    } finally {
+      cacheLoading = null;
+    }
+  })();
+  return cacheLoading;
 };
 
 // ─── Internals: Cross-Tab Sync ──────────────────────────────────────────────────
@@ -185,7 +219,9 @@ const initBC = (): void => {
 /** Notify all matching watchers of an event. Watcher errors are silently ignored. */
 const notifyWatchers = (event: KVEvent): void => {
   for (const w of watchers) {
-    if (!w.prefix || event.key.startsWith(w.prefix)) {
+    // `clear` events fire for ALL watchers regardless of prefix — a prefix
+    // watcher needs to know its slice of the store has been wiped too.
+    if (event.type === "clear" || !w.prefix || event.key.startsWith(w.prefix)) {
       try { w.cb(event); } catch { /* ignore */ }
     }
   }
@@ -222,27 +258,47 @@ const cleanupBlob = async (item: CacheItem | undefined): Promise<void> => {
  * await kvStore.set("prefs", { theme: "dark" });
  */
 export const set = async (key: string, value: unknown): Promise<void> => {
-  const hash = await hashKey(key);
   const serialized = JSON.stringify(value);
+  // JSON.stringify returns `undefined` for top-level undefined, functions, or
+  // symbols. Storing this previously produced a corrupt half-state where
+  // has(key) === true but get(key) === undefined. Reject loudly instead.
+  if (serialized === undefined) {
+    throw new TypeError(
+      "kvStore.set: value is not JSON-serializable (undefined, function, or symbol). " +
+        "Use kvStore.delete(key) to remove an entry.",
+    );
+  }
+  const hash = await hashKey(key);
   const bytes = enc.encode(serialized);
 
   await withLock(async () => {
     rebuildCache(await loadIndex());
-    await cleanupBlob(cache!.get(key));
+    const oldItem = cache!.get(key);
 
     const entry: IndexEntry = { key, ts: Date.now(), size: bytes.length, type: "json" };
 
     if (bytes.length <= INLINE_THRESHOLD) {
       entry.inline = serialized;
     } else {
+      // Write new blob FIRST so a failure here doesn't lose the old value.
+      // Same key → same hash → external writes overwrite in place.
       await OPFS.write(`${BLOBS_DIR}/${hash}`, bytes);
     }
 
     cache!.set(key, { hash, entry });
     await saveIndex();
-  });
 
-  emit({ type: "set", key });
+    // Only need cleanup when the old was external AND the new is inline —
+    // otherwise the old blob is either nonexistent or has been overwritten.
+    if (oldItem && oldItem.entry.inline === undefined && entry.inline !== undefined) {
+      await cleanupBlob(oldItem);
+    }
+
+    // Emit inside the lock so events arrive in the same order as the disk
+    // mutations they describe (was: emit-outside-lock could reorder under
+    // concurrent writes).
+    emit({ type: "set", key });
+  });
 };
 
 /**
@@ -261,21 +317,27 @@ export const setBytes = async (key: string, data: Uint8Array): Promise<void> => 
 
   await withLock(async () => {
     rebuildCache(await loadIndex());
-    await cleanupBlob(cache!.get(key));
+    const oldItem = cache!.get(key);
 
     const entry: IndexEntry = { key, ts: Date.now(), size: data.length, type: "bin" };
 
     if (data.length <= INLINE_THRESHOLD) {
       entry.inline = toBase64(data);
     } else {
+      // Write new blob FIRST so a quota / write failure doesn't lose the
+      // old value. Same-key → same hash → in-place overwrite.
       await OPFS.write(`${BLOBS_DIR}/${hash}`, data);
     }
 
     cache!.set(key, { hash, entry });
     await saveIndex();
-  });
 
-  emit({ type: "set", key });
+    if (oldItem && oldItem.entry.inline === undefined && entry.inline !== undefined) {
+      await cleanupBlob(oldItem);
+    }
+
+    emit({ type: "set", key });
+  });
 };
 
 /**
@@ -396,14 +458,14 @@ const del = async (key: string): Promise<void> => {
   await withLock(async () => {
     rebuildCache(await loadIndex());
     const item = cache!.get(key);
-    if (!item) return;
+    if (!item) return; // silent no-op for missing keys; don't fire spurious event
 
     await cleanupBlob(item);
     cache!.delete(key);
     await saveIndex();
-  });
 
-  emit({ type: "delete", key });
+    emit({ type: "delete", key });
+  });
 };
 
 /**
@@ -417,12 +479,20 @@ const del = async (key: string): Promise<void> => {
  */
 const clearStore = async (): Promise<void> => {
   await withLock(async () => {
-    try { await OPFS.delete(STORE_DIR); } catch { /* already empty */ }
+    try {
+      await OPFS.delete(STORE_DIR);
+    } catch (e) {
+      // Already-empty store → no error. Permission, quota, or other
+      // DOMException failures must propagate — silently swallowing them
+      // would leave the cache reset but the disk state unknown.
+      if (!(e instanceof DOMException && e.name === "NotFoundError")) {
+        throw e;
+      }
+    }
     cache = new Map();
     indexVersion = 0;
+    emit({ type: "clear", key: "" });
   });
-
-  emit({ type: "clear", key: "" });
 };
 
 /**
@@ -451,6 +521,25 @@ export const watch = (callback: (event: KVEvent) => void, prefix?: string): (() 
   return () => { watchers.delete(entry); };
 };
 
+/**
+ * Tear down the store's in-memory state and close the BroadcastChannel.
+ *
+ * Useful in test environments (each test gets a clean module-level state) and
+ * for explicit shutdown in long-lived apps. The next operation will re-initialise
+ * everything lazily — same as a fresh module load.
+ */
+export const destroy = (): void => {
+  if (bc) {
+    bc.close();
+    bc = null;
+  }
+  watchers.clear();
+  cache = null;
+  cacheLoading = null;
+  indexVersion = 0;
+  fallbackLockChain = Promise.resolve();
+};
+
 // ─── Namespace Export ────────────────────────────────────────────────────────────
 
 /**
@@ -472,4 +561,5 @@ export const kvStore = {
   delete: del,
   clear: clearStore,
   watch,
+  destroy,
 } as const;
