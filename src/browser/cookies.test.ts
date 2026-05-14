@@ -75,7 +75,7 @@ describe("writeJsonCookie + readJsonCookie", () => {
   it("roundtrips an array", () => {
     const data = [1, 2, 3];
     writeJsonCookie("nums", data);
-    expect(readJsonCookie("nums", [])).toEqual(data);
+    expect(readJsonCookie<number[]>("nums", [])).toEqual(data);
   });
 
   it("roundtrips a primitive", () => {
@@ -111,7 +111,7 @@ describe("readJsonCookie defaults and merging", () => {
 
   it("does not merge when defaultValue is an array", () => {
     writeJsonCookie("obj", { a: 1 });
-    expect(readJsonCookie("obj", [9])).toEqual({ a: 1 });
+    expect(readJsonCookie<unknown>("obj", [9])).toEqual({ a: 1 });
   });
 });
 
@@ -153,5 +153,27 @@ describe("multiple cookies coexist", () => {
     writeCookie("p", "new");
     expect(readCookie("p")).toBe("new");
     expect(readCookie("q")).toBe("keep");
+  });
+});
+
+// ==========================
+// Regression: name validation + malformed-decode safety
+// ==========================
+
+describe("cookies — defensive checks", () => {
+  it("rejects cookie names containing reserved chars", () => {
+    expect(() => writeCookie("a;b", "x")).toThrow();
+    expect(() => writeCookie("a=b", "x")).toThrow();
+    expect(() => writeCookie("a b", "x")).toThrow();
+    expect(() => writeJsonCookie("a\nb", { x: 1 })).toThrow();
+    expect(() => deleteCookie("a;b")).toThrow();
+  });
+
+  it("returns raw value when decodeURIComponent fails (third-party malformed cookie)", () => {
+    // Inject directly via the cookie store (simulating a server-set cookie
+    // whose value contains a stray %).
+    document.cookie = "weird=%E0%A4%A%; path=/";
+    expect(() => readCookie("weird")).not.toThrow();
+    expect(readCookie("weird")).toBe("%E0%A4%A%");
   });
 });

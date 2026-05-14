@@ -9,7 +9,7 @@ describe("a11y.clickOrEnter", () => {
       stopPropagation: mock(() => {}),
     } as unknown as MouseEvent;
 
-    handlers.onClick(event);
+    handlers.onClick(event as never);
     expect(fn).toHaveBeenCalledTimes(1);
     expect((event.stopPropagation as any).mock.calls.length).toBe(1);
   });
@@ -23,7 +23,7 @@ describe("a11y.clickOrEnter", () => {
       stopPropagation: mock(() => {}),
     } as unknown as KeyboardEvent;
 
-    handlers.onKeyDown(event);
+    handlers.onKeyDown(event as never);
     expect(fn).toHaveBeenCalledTimes(1);
     expect((event.preventDefault as any).mock.calls.length).toBe(1);
   });
@@ -37,7 +37,7 @@ describe("a11y.clickOrEnter", () => {
       stopPropagation: mock(() => {}),
     } as unknown as KeyboardEvent;
 
-    handlers.onKeyDown(event);
+    handlers.onKeyDown(event as never);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -50,7 +50,7 @@ describe("a11y.clickOrEnter", () => {
       stopPropagation: mock(() => {}),
     } as unknown as KeyboardEvent;
 
-    handlers.onKeyDown(event);
+    handlers.onKeyDown(event as never);
     expect(fn).toHaveBeenCalledTimes(0);
   });
 
@@ -64,8 +64,9 @@ describe("a11y.clickOrEnter", () => {
         preventDefault: mock(() => {}),
         stopPropagation: mock(() => {}),
       } as unknown as KeyboardEvent;
-      handlers.onKeyDown(event);
+      handlers.onKeyDown(event as never);
       expect((event.preventDefault as any).mock.calls.length).toBe(1);
     }
   });
 });
+

@@ -150,7 +150,7 @@ describe("hotkeys.create", () => {
     await Promise.resolve();
 
     expect(warn).toHaveBeenCalled();
-    const warnMsg = warn.mock.calls.find((call) =>
+    const warnMsg = (warn.mock.calls as unknown as unknown[][]).find((call) =>
       String(call[0]).includes("duplicate"),
     );
     expect(warnMsg).toBeDefined();
