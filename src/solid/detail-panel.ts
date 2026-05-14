@@ -52,16 +52,29 @@ export type DetailPanelController<T> = {
 
 /**
  * Update URL parameter without page reload.
- * Uses history.replaceState to preserve scroll position.
+ *
+ * `mode: "push"` (default) creates a new history entry so Back/Forward
+ * navigates between selections — the documented contract of the URL-synced
+ * detail panel. `mode: "replace"` overwrites the current entry (useful for
+ * the initial sync from URL state, where adding a history entry would
+ * double-up the current page).
  */
-const setUrlParam = (paramName: string, value: string | null): void => {
+const setUrlParam = (
+  paramName: string,
+  value: string | null,
+  mode: "push" | "replace" = "push",
+): void => {
   const url = new URL(window.location.href);
   if (value) {
     url.searchParams.set(paramName, value);
   } else {
     url.searchParams.delete(paramName);
   }
-  history.replaceState({}, "", url.toString());
+  if (mode === "push") {
+    history.pushState({}, "", url.toString());
+  } else {
+    history.replaceState({}, "", url.toString());
+  }
 };
 
 /**

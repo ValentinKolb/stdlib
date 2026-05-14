@@ -165,7 +165,10 @@ const sortDroppablesForKeyboard = <TDropMeta,>(entries: DndDroppableSnapshot<TDr
 
 /** Creates an off-screen ARIA live region for announcing drag events to screen readers. */
 const createLiveRegion = () => {
-  if (typeof document === "undefined") {
+  // Guard for SSR / jsdom: `document.body` is null in some test environments
+  // and in some SSR setups even when `document` is defined. A null-check on
+  // `document` alone wasn't enough — we'd throw at `appendChild`.
+  if (typeof document === "undefined" || !document.body) {
     return { announce: (_message: string) => {}, destroy: () => {} };
   }
 
@@ -199,11 +202,16 @@ const createLiveRegion = () => {
 
 /** Clones the source element (or its `[data-dnd-preview]` child) into a fixed-position ghost overlay for pointer drags. */
 const createGhost = (source: HTMLElement) => {
-  if (typeof document === "undefined") return null;
+  if (typeof document === "undefined" || !document.body) return null;
   const preview = source.querySelector<HTMLElement>("[data-dnd-preview]") ?? source;
   const rect = preview.getBoundingClientRect();
   const previewStyle = getComputedStyle(preview);
   const clone = preview.cloneNode(true) as HTMLElement;
+  // Strip id attributes from the clone tree — keeping them would create
+  // duplicate DOM IDs during the drag, breaking `<label for="…">` matching,
+  // `aria-labelledby` linkage, and browser anchor navigation.
+  if (clone.hasAttribute("id")) clone.removeAttribute("id");
+  clone.querySelectorAll<HTMLElement>("[id]").forEach((el) => el.removeAttribute("id"));
   const count = Number(preview.dataset.dndCount ?? "0");
   clone.style.position = "fixed";
   clone.style.top = `${rect.top}px`;
@@ -259,8 +267,10 @@ const getPointerFromEvent = (event: PointerEvent): DndPointer => ({ x: event.cli
  * Side effects:
  * - Attaches `pointermove`, `pointerup`, and `pointercancel` listeners on `window`
  *   while a drag is pending or active.
- * - Mutates DOM: sets `opacity`, `aria-grabbed`, `data-dnd-*` attributes, `tabindex`,
- *   and `user-select` on source elements and `document.documentElement`.
+ * - Mutates DOM: sets `opacity`, `data-dnd-active`, `data-dnd-*` attributes,
+ *   `tabindex`, and `user-select` on source elements and `document.documentElement`.
+ *   `aria-grabbed` is also set for backward compatibility but is deprecated
+ *   (removed from ARIA 1.2); target `[data-dnd-active]` in new CSS.
  * - Appends a ghost element and an ARIA live region to `document.body`.
  * - All listeners and DOM mutations are cleaned up on `destroy()` or component unmount.
  *
@@ -281,8 +291,29 @@ const getPointerFromEvent = (event: PointerEvent): DndPointer => ({ x: event.cli
 const createDnd = <TDragMeta, TDropMeta, TIntent>(
   options: DndCreateOptions<TDragMeta, TDropMeta, TIntent> = {},
 ): DndController<TDragMeta, TDropMeta, TIntent> => {
-  const activationDistance = options.activationDistance ?? DEFAULT_ACTIVATION_DISTANCE;
-  const touchActivationDelayMs = options.touchActivationDelayMs ?? DEFAULT_TOUCH_DELAY;
+  // Validate numeric options — NaN / Infinity / negative values would
+  // either disable activation entirely or hang the touch-delay check.
+  const validatePositiveNumber = (value: number | undefined, fallback: number, name: string): number => {
+    if (value === undefined) return fallback;
+    if (!Number.isFinite(value) || value < 0) {
+      throw new TypeError(`dnd.create: ${name} must be a non-negative finite number (got ${value})`);
+    }
+    return value;
+  };
+  const activationDistance = validatePositiveNumber(
+    options.activationDistance,
+    DEFAULT_ACTIVATION_DISTANCE,
+    "activationDistance",
+  );
+  const touchActivationDelayMs = validatePositiveNumber(
+    options.touchActivationDelayMs,
+    DEFAULT_TOUCH_DELAY,
+    "touchActivationDelayMs",
+  );
+
+  /** Set to true when destroy() runs. Subsequent pointer/key events are
+   *  no-ops so a destroyed controller doesn't react to anything. */
+  let destroyed = false;
   const detectCollision = options.collisionDetector ?? defaultCollisionDetector;
   const compareIntent = options.isSameIntent ?? defaultIntentComparator<TIntent>;
 
@@ -305,6 +336,24 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
   const announce = (message: string | null | undefined) => {
     if (!message) return;
     liveRegion.announce(message);
+  };
+
+  /**
+   * Call a user-supplied callback while swallowing exceptions, so a buggy
+   * callback can't leave the controller in a half-cleared state (ghost stuck,
+   * source-opacity stuck at 0.35, etc). Errors are logged but don't propagate.
+   */
+  const safeCall = <T extends unknown[]>(
+    fn: ((...args: T) => unknown) | undefined,
+    args: T,
+    label: string,
+  ): void => {
+    if (!fn) return;
+    try {
+      fn(...args);
+    } catch (e) {
+      console.error(`dnd: ${label} threw:`, e);
+    }
   };
 
   const getDroppableSnapshots = (currentPointer: DndPointer): DndDroppableSnapshot<TDropMeta>[] => {
@@ -372,22 +421,35 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
         })
       : null;
 
-    if (nextOverId !== overId()) {
+    const overChanged = nextOverId !== overId();
+    if (overChanged) {
       setOverId(nextOverId);
       announce(options.announcements?.dragOver?.(activeDrag.snapshot, nextOver));
     }
 
-    if (!compareIntent(intent(), nextIntent)) {
+    const intentChanged = !compareIntent(intent(), nextIntent);
+    if (intentChanged) {
       setIntent(() => nextIntent);
     }
 
-    options.onDragOver?.({
-      mode: activeDrag.mode,
-      active: activeDrag.snapshot,
-      over: nextOver,
-      intent: nextIntent,
-      pointer,
-    });
+    // Gate the user callback by actual state change. Previously this fired
+    // every animation frame even when over/intent didn't change — spammy and
+    // expensive when consumers do work inside onDragOver.
+    if (overChanged || intentChanged) {
+      safeCall(
+        options.onDragOver,
+        [
+          {
+            mode: activeDrag.mode,
+            active: activeDrag.snapshot,
+            over: nextOver,
+            intent: nextIntent,
+            pointer,
+          },
+        ],
+        "onDragOver",
+      );
+    }
   };
 
   const clearPointerListeners = () => {
@@ -494,13 +556,19 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     keyboardOverIndex = sorted.findIndex((entry) => entry.id === config.id);
     if (keyboardOverIndex < 0) keyboardOverIndex = 0;
 
-    options.onDragStart?.({
-      mode: params.mode,
-      active: activeDrag.snapshot,
-      over: null,
-      intent: null,
-      pointer,
-    });
+    safeCall(
+      options.onDragStart,
+      [
+        {
+          mode: params.mode,
+          active: activeDrag.snapshot,
+          over: null,
+          intent: null,
+          pointer,
+        },
+      ],
+      "onDragStart",
+    );
 
     emitDragOver();
   };
@@ -513,38 +581,57 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       ? getDroppableSnapshots(pointer).find((entry) => entry.id === currentOverId) ?? null
       : null;
 
+    // No target (pointer released on empty space, or droppable was removed
+    // mid-drag) → fire onCancel rather than silently dropping the drag.
+    // Previously this was a silent no-op which left consumers without any
+    // signal that the drag had ended.
     if (!currentOver) {
+      const snapshot = activeDrag.snapshot;
+      const mode = activeDrag.mode;
+      const ctx = { mode, active: snapshot, over: null, intent: intent(), pointer };
+      // Clear state BEFORE invoking the user callback so a synchronous
+      // unmount inside the callback can't observe the half-state.
       clearSession();
+      announce(options.announcements?.cancel?.(snapshot));
+      safeCall(options.onCancel, [ctx], "onCancel");
       return;
     }
 
-    announce(options.announcements?.drop?.(activeDrag.snapshot, currentOver));
-    options.onDrop?.({
-      mode: activeDrag.mode,
-      active: activeDrag.snapshot,
-      over: currentOver,
-      intent: intent(),
-      pointer,
-    });
+    const snapshot = activeDrag.snapshot;
+    const mode = activeDrag.mode;
+    const currentIntent = intent();
+    const ctx = { mode, active: snapshot, over: currentOver, intent: currentIntent, pointer };
+    // Clear state BEFORE the user callback. Synchronous unmounts inside
+    // onDrop previously fired both onDrop and (through onCleanup → cancel)
+    // an onCancel for the same drag — contradictory events.
     clearSession();
+    announce(options.announcements?.drop?.(snapshot, currentOver));
+    safeCall(options.onDrop, [ctx], "onDrop");
   };
 
   /** Aborts the current drag, fires onCancel, and resets all drag state. */
   const cancel = () => {
+    // Also clear pending-pointer state and window listeners when called
+    // before drag activation crosses the threshold (e.g. programmatic cancel
+    // via Escape hotkey while pointer is pressed but unmoved).
+    if (pendingPointer && !activeDrag) {
+      pendingPointer = null;
+      unlockSelection();
+      clearPointerListeners();
+      return;
+    }
     if (!activeDrag) return;
     const currentOverId = overId();
     const currentOver = currentOverId
       ? getDroppableSnapshots(pointer).find((entry) => entry.id === currentOverId) ?? null
       : null;
-    announce(options.announcements?.cancel?.(activeDrag.snapshot));
-    options.onCancel?.({
-      mode: activeDrag.mode,
-      active: activeDrag.snapshot,
-      over: currentOver,
-      intent: intent(),
-      pointer,
-    });
+    const snapshot = activeDrag.snapshot;
+    const mode = activeDrag.mode;
+    const ctx = { mode, active: snapshot, over: currentOver, intent: intent(), pointer };
     clearSession();
+    clearPointerListeners();
+    announce(options.announcements?.cancel?.(snapshot));
+    safeCall(options.onCancel, [ctx], "onCancel");
   };
 
   const maybeStartPendingPointerDrag = (event: PointerEvent) => {
@@ -624,9 +711,14 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     const isArrowKey = event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowRight";
 
     if (!activeDrag && isTriggerKey) {
+      // Anchor the keyboard "pointer" at the element's geometric center so
+      // initial collision detection picks up the correct droppable.
+      // Previously a hardcoded +4px offset put the cursor in the top-left
+      // corner regardless of element size.
+      const rect = record.element.getBoundingClientRect();
       pointer = {
-        x: record.element.getBoundingClientRect().left + 4,
-        y: record.element.getBoundingClientRect().top + 4,
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
       };
 
       beginDrag({
@@ -637,7 +729,10 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
         offsetX: 0,
         offsetY: 0,
       });
+      // Stop the trigger from bubbling so stacked draggables don't all
+      // attempt to start a drag in sequence.
       event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
@@ -693,22 +788,42 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       getConfig: () => current,
     };
 
+    // Warn on duplicate id registration. Previously a silent overwrite that
+    // produced confusing "drop fires for wrong item" bugs.
+    if (draggables.has(record.id)) {
+      console.warn(
+        `dnd: duplicate draggable id "${String(record.id)}" — the previous registration will be overwritten`,
+      );
+    }
     draggables.set(record.id, record);
 
     const onPointerDown = (event: PointerEvent) => {
+      if (destroyed) return;
+      // Guard against a second pointer triggering a fresh pending-pointer
+      // state while another drag (or pending) is in progress. Previously
+      // this overwrote `pendingPointer` and re-registered window listeners,
+      // leaking handlers and confusing the source-of-drag identity.
+      if (activeDrag || pendingPointer) return;
       const config = record.getConfig();
       if (config.disabled) return;
       if (event.button !== 0) return;
       if (event.isPrimary === false) return;
 
       if (config.handleSelector) {
-        const target =
-          event.target instanceof Element
-            ? event.target
-            : event.target instanceof Node
-              ? event.target.parentElement
-              : null;
-        if (!target?.closest(config.handleSelector) || !element.contains(target)) {
+        try {
+          const target =
+            event.target instanceof Element
+              ? event.target
+              : event.target instanceof Node
+                ? event.target.parentElement
+                : null;
+          if (!target?.closest(config.handleSelector) || !element.contains(target)) {
+            return;
+          }
+        } catch (e) {
+          // Malformed handleSelector (e.g. invalid CSS) — fall back to
+          // ignoring the drag rather than crashing the entire pointer flow.
+          console.error("dnd: handleSelector invalid:", e);
           return;
         }
       } else if (isInteractiveTarget(event.target)) {
@@ -728,6 +843,16 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
         offsetY: event.clientY - rect.top,
       };
       lockSelection();
+
+      // setPointerCapture routes all subsequent pointer events to this
+      // element until the pointer is released, even if it leaves the
+      // viewport or the element. Without this we'd miss pointerup events
+      // when the user drags off the window.
+      try {
+        element.setPointerCapture(event.pointerId);
+      } catch {
+        // Older browsers / detached elements may throw — non-fatal.
+      }
 
       window.addEventListener("pointermove", onWindowPointerMove, { passive: false });
       window.addEventListener("pointerup", onWindowPointerUp);
@@ -749,6 +874,23 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("dragstart", onDragStart);
     element.setAttribute("data-dnd-draggable", "true");
+
+    // Disable browser-native touch gestures (scroll, pinch-zoom) on
+    // draggable elements. Without this, touch drags on mobile compete with
+    // the browser's scroll handling — first touchmove cancels the drag.
+    // Preserve any pre-existing value so we can restore on cleanup.
+    const prevTouchAction = element.style.touchAction;
+    element.style.touchAction = "none";
+
+    // Mark <img>/<a> descendants as non-draggable so the browser's native
+    // drag-and-drop doesn't compete with ours (it would otherwise fire
+    // `dragstart` on these elements and start a native ghost-image drag).
+    const nativeDraggableChildren = element.querySelectorAll<HTMLElement>("img, a");
+    const restoreChildDraggable: Array<{ el: HTMLElement; prev: string | null }> = [];
+    nativeDraggableChildren.forEach((el) => {
+      restoreChildDraggable.push({ el, prev: el.getAttribute("draggable") });
+      el.setAttribute("draggable", "false");
+    });
 
     createEffect(() => {
       const next = accessor();
@@ -775,16 +917,34 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
 
     createEffect(() => {
       const isActive = activeId() === record.id && isDragging();
+      // `aria-grabbed` was removed from ARIA 1.2; screen readers ignore it.
+      // Still emitted for backward compatibility with existing CSS hooks,
+      // but `data-dnd-active` is the future-proof attribute to target.
       element.setAttribute("aria-grabbed", isActive ? "true" : "false");
+      element.setAttribute("data-dnd-active", isActive ? "true" : "false");
     });
 
     onCleanup(() => {
+      // If this draggable is currently being dragged when its component
+      // unmounts, fire cancel BEFORE removing it from the registry — so
+      // consumers get a clear "drag aborted" signal rather than a silent
+      // disappearance.
+      if (activeDrag?.snapshot.id === record.id) {
+        cancel();
+      }
       draggables.delete(record.id);
       element.removeEventListener("pointerdown", onPointerDown);
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("dragstart", onDragStart);
-      if (activeDrag?.snapshot.id === record.id) {
-        cancel();
+      // Clean up DOM attributes / styles so the element doesn't keep
+      // dnd-related state after unmount.
+      element.removeAttribute("data-dnd-draggable");
+      element.removeAttribute("data-dnd-active");
+      element.removeAttribute("aria-grabbed");
+      element.style.touchAction = prevTouchAction;
+      for (const { el, prev } of restoreChildDraggable) {
+        if (prev === null) el.removeAttribute("draggable");
+        else el.setAttribute("draggable", prev);
       }
     });
   };
@@ -807,6 +967,11 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       getConfig: () => current,
     };
 
+    if (droppables.has(record.id)) {
+      console.warn(
+        `dnd: duplicate droppable id "${String(record.id)}" — the previous registration will be overwritten`,
+      );
+    }
     droppables.set(record.id, record);
     element.setAttribute("data-dnd-droppable", "true");
 
@@ -827,12 +992,24 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
 
     onCleanup(() => {
       droppables.delete(record.id);
+      element.removeAttribute("data-dnd-droppable");
+      element.removeAttribute("data-dnd-over");
     });
   };
 
   const destroy = () => {
+    if (destroyed) return;
+    destroyed = true;
+    // Always cancel any in-flight drag AND clear pending-pointer state, so
+    // an unmount mid-press doesn't leak three window listeners until the
+    // user releases. Previously the cleanup only ran when `activeDrag` was
+    // set, missing the activation-pending case entirely.
     if (activeDrag) {
       cancel();
+    } else if (pendingPointer) {
+      pendingPointer = null;
+      unlockSelection();
+      clearPointerListeners();
     }
     unlockSelection();
     clearPointerListeners();

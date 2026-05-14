@@ -211,3 +211,54 @@ describe("mutation.create", () => {
     dispose();
   });
 });
+
+// ==========================
+// Regression: concurrent mutations + abort handling
+// ==========================
+
+describe("mutation regression", () => {
+  it("does not overwrite newer result with stale older one", async () => {
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async (vars: { delay: number; value: string }) => {
+          await new Promise((r) => setTimeout(r, vars.delay));
+          return vars.value;
+        },
+      }),
+    );
+    void m.mutate({ delay: 60, value: "stale" });
+    await new Promise((r) => setTimeout(r, 5));
+    void m.mutate({ delay: 10, value: "fresh" });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(m.data()).toBe("fresh");
+    dispose();
+  });
+
+  it("routes AbortError to onAbort, not onError", async () => {
+    const onError = mock(() => {});
+    const onAbort = mock(() => {});
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: async (_v: null, ctx) => {
+          await new Promise<null>((_resolve, reject) => {
+            ctx.abortSignal.addEventListener("abort", () => {
+              const err = new Error("aborted");
+              err.name = "AbortError";
+              reject(err);
+            });
+          });
+          return null;
+        },
+        onError,
+        onAbort,
+      }),
+    );
+    void m.mutate(null);
+    await new Promise((r) => setTimeout(r, 5));
+    m.abort();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onAbort).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    dispose();
+  });
+});

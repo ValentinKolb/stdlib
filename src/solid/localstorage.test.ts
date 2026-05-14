@@ -75,7 +75,7 @@ describe("localStore.create", () => {
     );
     const [, setStore] = result;
     setStore("value", "updated");
-    const raw = JSON.parse(store["test-persist"]);
+    const raw = JSON.parse(store["test-persist"]!);
     expect(raw.value).toBe("updated");
     dispose();
     delete store["test-persist"];
@@ -146,7 +146,7 @@ describe("localStore.read", () => {
 describe("localStore.modify", () => {
   it("writes a value to storage", () => {
     localStore.modify("mod-test", { x: 10 });
-    const raw = JSON.parse(store["mod-test"]);
+    const raw = JSON.parse(store["mod-test"]!);
     expect(raw.x).toBe(10);
     expect(raw._key).toBe("mod-test");
     delete store["mod-test"];

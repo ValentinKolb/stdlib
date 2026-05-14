@@ -59,9 +59,16 @@ const create = (options: DropzoneOptions) => {
       e.preventDefault();
       e.stopPropagation();
 
+      // A drag is a file-drag only when the dataTransfer actually contains
+      // files. The `Files` entry in `types` is the canonical signal; the
+      // fallback walks `items` looking for `kind === 'file'`. Plain text /
+      // link drags previously triggered the file-drop UI because we used
+      // `items.length > 0`.
       const hasFiles =
         e.dataTransfer?.types?.includes("Files") ||
-        (e.dataTransfer?.items && e.dataTransfer.items.length > 0);
+        (e.dataTransfer?.items
+          ? Array.from(e.dataTransfer.items).some((item) => item.kind === "file")
+          : false);
       if (!hasFiles) return;
 
       setDragCounter((prev) => prev + 1);

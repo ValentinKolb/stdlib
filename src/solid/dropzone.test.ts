@@ -98,8 +98,9 @@ describe("dropzone.create", () => {
 
     (result.handlers.onDrop as any)(event);
     expect(onDrop).toHaveBeenCalledTimes(1);
-    expect(onDrop.mock.calls[0]![0]).toHaveLength(1);
-    expect(onDrop.mock.calls[0]![0][0].name).toBe("test.txt");
+    const dropArgs = onDrop.mock.calls[0] as unknown as [File[]];
+    expect(dropArgs[0]).toHaveLength(1);
+    expect(dropArgs[0][0]!.name).toBe("test.txt");
     dispose();
   });
 
@@ -151,7 +152,7 @@ describe("dropzone.create", () => {
 
     (result.handlers.onDrop as any)(event);
     expect(onDrop).toHaveBeenCalledTimes(1);
-    const passedFiles = onDrop.mock.calls[0]![0] as File[];
+    const passedFiles = (onDrop.mock.calls[0] as unknown as [File[]])[0];
     expect(passedFiles).toHaveLength(1);
     expect(passedFiles[0]!.name).toBe("photo.png");
     expect(passedFiles.every((f) => f.type.startsWith("image/"))).toBe(true);

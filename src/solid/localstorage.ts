@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { type Store, type SetStoreFunction, createStore } from "solid-js/store";
+import { type Store, type SetStoreFunction, createStore, reconcile } from "solid-js/store";
 
 // ==========================
 // Types
@@ -120,12 +120,27 @@ const create = <T extends Record<string, any>>(
 ): CreateLocalStoreResult<T> => {
   const { storage = localStorage, serializer = defaultSerializer } = options;
 
+  /** Validate that a parsed value matches the StoreItem<T> shape: a plain
+   *  object whose `_key` matches the key we're rehydrating. Accepts only
+   *  values that are safely usable as the reactive store; falls back to
+   *  defaults for null/array/primitive/wrong-key inputs. */
+  const isValidStoreItem = (v: unknown): v is StoreItem<T> => {
+    if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+    const candidate = v as Record<string, unknown>;
+    return candidate._key === key;
+  };
+
   const getInitialValue = (): StoreItem<T> => {
     try {
       const stored = storage.getItem(key);
-      return stored
-        ? (serializer.deserialize(stored) as StoreItem<T>)
-        : { ...defaultValue, _key: key };
+      if (!stored) return { ...defaultValue, _key: key };
+      const parsed = serializer.deserialize(stored);
+      if (!isValidStoreItem(parsed)) {
+        // Corrupted or wrong-shape data — fall back to defaults rather than
+        // hand the user a value that violates the StoreItem contract.
+        return { ...defaultValue, _key: key };
+      }
+      return parsed;
     } catch {
       return { ...defaultValue, _key: key };
     }
@@ -135,12 +150,15 @@ const create = <T extends Record<string, any>>(
 
   const unsubscribe = subscribe(key, (_, value?: any) => {
     if (value === null) {
-      _setStore({ ...defaultValue, _key: key });
-    } else if (value) {
-      _setStore(value);
+      // Cross-tab remove or local reset: fully replace with defaults so any
+      // properties present in the previous state are dropped (was: merge
+      // via `_setStore(object)` which left stale fields visible).
+      _setStore(reconcile({ ...defaultValue, _key: key }));
+    } else if (value && isValidStoreItem(value)) {
+      _setStore(reconcile(value));
     } else {
       const newValue = getInitialValue();
-      _setStore(newValue);
+      _setStore(reconcile(newValue));
     }
   });
   onCleanup(unsubscribe);

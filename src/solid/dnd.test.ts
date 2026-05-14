@@ -61,3 +61,83 @@ describe("dnd SSR safety", () => {
     });
   });
 });
+
+// ============================================================================
+// Audit fixes — non-DOM checks (validation, idempotency, callback safety)
+// ============================================================================
+
+describe("dnd option validation", () => {
+  it("throws TypeError on non-finite activationDistance", () => {
+    expect(() => {
+      createRoot(() => dnd.create({ activationDistance: NaN }));
+    }).toThrow(/activationDistance/);
+    expect(() => {
+      createRoot(() => dnd.create({ activationDistance: Infinity }));
+    }).toThrow(/activationDistance/);
+  });
+
+  it("throws TypeError on negative activationDistance", () => {
+    expect(() => {
+      createRoot(() => dnd.create({ activationDistance: -1 }));
+    }).toThrow(/activationDistance/);
+  });
+
+  it("throws TypeError on non-finite touchActivationDelayMs", () => {
+    expect(() => {
+      createRoot(() => dnd.create({ touchActivationDelayMs: NaN }));
+    }).toThrow(/touchActivationDelayMs/);
+  });
+
+  it("accepts 0 (zero) for activationDistance and touchActivationDelayMs", () => {
+    expect(() => {
+      createRoot(() =>
+        dnd.create({ activationDistance: 0, touchActivationDelayMs: 0 }),
+      );
+    }).not.toThrow();
+  });
+});
+
+describe("dnd idempotent destroy", () => {
+  it("calling destroy() twice does not throw", () => {
+    createRoot((dispose) => {
+      const ctrl = dnd.create();
+      ctrl.destroy();
+      expect(() => ctrl.destroy()).not.toThrow();
+      dispose();
+    });
+  });
+
+  it("calling cancel() with no active drag is a safe no-op", () => {
+    createRoot((dispose) => {
+      const ctrl = dnd.create();
+      expect(() => ctrl.cancel()).not.toThrow();
+      expect(ctrl.isDragging()).toBe(false);
+      dispose();
+    });
+  });
+});
+
+describe("dnd safeCall — user callback exception safety", () => {
+  // We can't trigger onDragStart/onDrop without DOM, but we can verify the
+  // signatures and that mounting + destroy works with hot callbacks set.
+  it("create() accepts callbacks that would throw, without observing them", () => {
+    createRoot((dispose) => {
+      const ctrl = dnd.create({
+        onDragStart: () => {
+          throw new Error("user code threw in onDragStart");
+        },
+        onDrop: () => {
+          throw new Error("user code threw in onDrop");
+        },
+        onCancel: () => {
+          throw new Error("user code threw in onCancel");
+        },
+      });
+      // Just ensure mount + destroy work cleanly even with throwing callbacks
+      // wired up. (Real callback invocations are covered by the dnd directive
+      // path which requires a DOM — out of scope for unit tests.)
+      expect(() => ctrl.destroy()).not.toThrow();
+      dispose();
+    });
+  });
+});

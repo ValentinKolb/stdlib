@@ -30,9 +30,9 @@ if (typeof globalThis.CustomEvent === "undefined") {
   (globalThis as any).CustomEvent = (window as any).CustomEvent;
 }
 
-// Mock history
+// Mock history (both push and replace)
 Object.defineProperty(globalThis, "history", {
-  value: { replaceState: mock(() => {}) },
+  value: { replaceState: mock(() => {}), pushState: mock(() => {}) },
   writable: true,
   configurable: true,
 });
@@ -42,22 +42,28 @@ Object.defineProperty(globalThis, "history", {
 // ==========================
 
 describe("detailPanel.setUrlParam", () => {
-  it("calls history.replaceState", () => {
-    (history.replaceState as any).mockClear();
+  it("calls history.pushState by default (creates Back/Forward entry)", () => {
+    (history.pushState as any).mockClear();
     detailPanel.setUrlParam("item", "123");
+    expect(history.pushState).toHaveBeenCalled();
+  });
+
+  it("calls history.replaceState in 'replace' mode", () => {
+    (history.replaceState as any).mockClear();
+    detailPanel.setUrlParam("item", "123", "replace");
     expect(history.replaceState).toHaveBeenCalled();
   });
 
   it("sets param in URL", () => {
     detailPanel.setUrlParam("item", "abc");
-    const call = (history.replaceState as any).mock.calls.at(-1);
+    const call = (history.pushState as any).mock.calls.at(-1);
     // The third argument is the new URL string
     expect(call[2]).toContain("item=abc");
   });
 
   it("deletes param when value is null", () => {
     detailPanel.setUrlParam("item", null);
-    const call = (history.replaceState as any).mock.calls.at(-1);
+    const call = (history.pushState as any).mock.calls.at(-1);
     expect(call[2]).not.toContain("item=");
   });
 });

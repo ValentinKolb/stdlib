@@ -201,6 +201,10 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
     try {
       const result = await options.mutation(vars, combinedCtx);
 
+      // If a newer mutation has been kicked off, drop this stale result on
+      // the floor — the newer mutation's outcome is the source of truth.
+      if (currentAbortController !== abortController) return;
+
       // If the mutation was aborted, trigger the onAbort callback.
       if (abortController.signal.aborted) {
         if (options.onAbort) {
@@ -214,10 +218,19 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
       }
     } catch (err: unknown) {
       if (currentAbortController !== abortController) return;
-      const error = normalizeError(err);
-      setError(error);
-      if (options.onError) {
-        options.onError(error, combinedCtx);
+      // AbortError surfacing as an exception (typical fetch behaviour) is
+      // routed to onAbort, not onError, since the user explicitly cancelled.
+      const isAbortError =
+        abortController.signal.aborted ||
+        (err instanceof Error && err.name === "AbortError");
+      if (isAbortError) {
+        if (options.onAbort) options.onAbort(combinedCtx);
+      } else {
+        const error = normalizeError(err);
+        setError(error);
+        if (options.onError) {
+          options.onError(error, combinedCtx);
+        }
       }
     } finally {
       setLoading(false);
