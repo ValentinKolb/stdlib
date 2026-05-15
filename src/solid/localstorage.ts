@@ -83,14 +83,25 @@ const notify = (key: string, value?: any, __fromBroadcast = false): void => {
     }
   });
   if (!__fromBroadcast) {
-    setTimeout(() => globalChannel?.postMessage({ key }), 0);
+    setTimeout(() => {
+      try {
+        globalChannel?.postMessage({ key });
+      } catch {
+        // Channel closed or runtime missing postMessage — ignore.
+      }
+    }, 0);
   }
 };
 
-globalChannel?.addEventListener("message", (event) => {
-  const { key } = event.data;
-  notify(key, undefined, true);
-});
+// Some runtimes (e.g. minimal Bun environments) expose `BroadcastChannel` as
+// a constructor but the instance lacks `addEventListener`. Guard against that
+// so module load never throws — cross-tab sync simply degrades to a no-op.
+if (globalChannel && typeof globalChannel.addEventListener === "function") {
+  globalChannel.addEventListener("message", (event) => {
+    const { key } = (event as MessageEvent).data;
+    notify(key, undefined, true);
+  });
+}
 
 // ==========================
 // Public API
