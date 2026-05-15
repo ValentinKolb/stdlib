@@ -4,8 +4,14 @@ import { describe, it, expect, mock, beforeEach } from "bun:test";
 const docListeners = new Map<string, Set<Function>>();
 const cleanupFns: Function[] = [];
 
-// Ensure document exists with working event listener tracking
-if (typeof document === "undefined") {
+// Ensure document exists with working event listener tracking. Some Bun
+// runtimes expose a partial `document` global (typeof !== "undefined") that
+// lacks `addEventListener` — detect that and install the mock anyway.
+const docHasListeners =
+  typeof document !== "undefined" &&
+  typeof (document as any).addEventListener === "function";
+
+if (!docHasListeners) {
   (globalThis as any).document = {
     addEventListener: (event: string, handler: Function) => {
       if (!docListeners.has(event)) docListeners.set(event, new Set());
