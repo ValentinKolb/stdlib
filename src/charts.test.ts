@@ -665,6 +665,64 @@ describe("charts.pie", () => {
     expect(a).toContain("<path class=\"stdlib-chart-slice");
     expect(b).toContain("<path class=\"stdlib-chart-slice");
   });
+
+  it("renders legend with label and percent when legend:true", () => {
+    const svg = pie({
+      data: [
+        { label: "Rent", value: 79 },
+        { label: "Other", value: 21 },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain("stdlib-chart-legend");
+    expect(svg).toContain("Rent (79%)");
+    expect(svg).toContain("Other (21%)");
+  });
+
+  it("legend off by default — no legend group emitted", () => {
+    const svg = pie({
+      data: [
+        { label: "A", value: 1 },
+        { label: "B", value: 1 },
+      ],
+    });
+    // CSS rules for legend classes are always present; what we check is that
+    // no actual legend <g> is rendered.
+    expect(svg).not.toContain(`<g class="stdlib-chart-legend">`);
+  });
+
+  it("formats small slice percentages to 1 decimal in legend", () => {
+    const svg = pie({
+      data: [
+        { label: "Big", value: 95 },
+        { label: "Tiny", value: 2.3 },
+        { label: "Sliver", value: 2.7 },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain("Tiny (2.3%)");
+    expect(svg).toContain("Sliver (2.7%)");
+    expect(svg).toContain("Big (95%)");
+  });
+
+  it("legend reduces pie radius (reserves space below)", () => {
+    const w = 400;
+    const h = 320;
+    const data = [
+      { label: "A", value: 50 },
+      { label: "B", value: 50 },
+    ];
+    const noLegend = pie({ data, width: w, height: h });
+    const withLegend = pie({ data, width: w, height: h, legend: true });
+    // Extract first slice path's radius via the first arc command (A rx ry ...).
+    const r = (svg: string): number => {
+      const m = / d="M[^A]*A ([\d.]+) /.exec(svg);
+      return m ? parseFloat(m[1]!) : -1;
+    };
+    expect(r(noLegend)).toBeGreaterThan(0);
+    expect(r(withLegend)).toBeGreaterThan(0);
+    expect(r(withLegend)).toBeLessThan(r(noLegend));
+  });
 });
 
 describe("charts.donut", () => {
@@ -691,6 +749,19 @@ describe("charts.donut", () => {
     const a = donut({ data: [{ label: "A", value: 1 }], innerRadius: 0.3 });
     const b = pie({ data: [{ label: "A", value: 1 }], innerRadius: 0.3 });
     expect(a).toBe(b);
+  });
+
+  it("supports legend option (same as pie)", () => {
+    const svg = donut({
+      data: [
+        { label: "Used", value: 67 },
+        { label: "Free", value: 33 },
+      ],
+      legend: true,
+    });
+    expect(svg).toContain("stdlib-chart-legend");
+    expect(svg).toContain("Used (67%)");
+    expect(svg).toContain("Free (33%)");
   });
 });
 

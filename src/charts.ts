@@ -721,39 +721,100 @@ const renderLegend = (
 ): { svg: string; height: number } => {
   if (items.length === 0) return { svg: "", height: 0 };
 
-  const HEIGHT = 20;
+  const ROW_HEIGHT = 20;
   const ITEM_GAP = 16;
   const SWATCH = 8;
   const SWATCH_GAP = 4;
+  const SIDE_PADDING = 4;
   // Approximate text width per character at 11px — good enough for centering.
   const charWidth = 6.5;
 
   const itemWidths = items.map(
     (it) => SWATCH + SWATCH_GAP + Math.max(it.label.length, 1) * charWidth,
   );
-  const totalWidth =
-    itemWidths.reduce((a, b) => a + b, 0) + (items.length - 1) * ITEM_GAP;
 
-  let cursor = Math.max(4, (width - totalWidth) / 2);
-  const baseY = yTop + HEIGHT / 2;
-  const parts: string[] = [`<g class="stdlib-chart-legend">`];
-
+  // Greedy line-break: pack items into rows so each row fits inside the
+  // available width. Single-row legends (≤ a few short labels) still render
+  // on one line — no visual change for the line/scatter/bar callers that
+  // typically have only 2-4 series. Pie/donut with long "Label (XX%)" entries
+  // and 5+ slices wrap to multiple rows instead of overflowing the viewBox.
+  const availableWidth = Math.max(40, width - 2 * SIDE_PADDING);
+  const rows: { items: typeof items; widths: number[]; totalWidth: number }[] = [];
+  let cur: typeof items = [];
+  let curW = 0;
   items.forEach((item, i) => {
-    parts.push(
-      `<g class="stdlib-chart-legend-item stdlib-chart-series-${item.seriesIndex % 8}">`,
-    );
-    parts.push(
-      `<rect class="stdlib-chart-legend-swatch" x="${fmt(cursor)}" y="${fmt(baseY - SWATCH / 2)}" width="${SWATCH}" height="${SWATCH}" rx="1"/>`,
-    );
-    parts.push(
-      `<text class="stdlib-chart-legend-label" x="${fmt(cursor + SWATCH + SWATCH_GAP)}" y="${fmt(baseY)}" dominant-baseline="middle">${escapeXml(item.label)}</text>`,
-    );
-    parts.push(`</g>`);
-    cursor += itemWidths[i]! + ITEM_GAP;
+    const w = itemWidths[i]!;
+    const projected = cur.length === 0 ? w : curW + ITEM_GAP + w;
+    if (cur.length > 0 && projected > availableWidth) {
+      rows.push({
+        items: cur,
+        widths: cur.map((_, j) => itemWidths[i - cur.length + j]!),
+        totalWidth: curW,
+      });
+      cur = [item];
+      curW = w;
+    } else {
+      cur = [...cur, item];
+      curW = projected;
+    }
   });
+  if (cur.length > 0) {
+    rows.push({
+      items: cur,
+      widths: cur.map((_, j) => itemWidths[items.length - cur.length + j]!),
+      totalWidth: curW,
+    });
+  }
 
+  const parts: string[] = [`<g class="stdlib-chart-legend">`];
+  rows.forEach((row, rowIdx) => {
+    let cursor = Math.max(SIDE_PADDING, (width - row.totalWidth) / 2);
+    const baseY = yTop + ROW_HEIGHT / 2 + rowIdx * ROW_HEIGHT;
+    row.items.forEach((item, i) => {
+      parts.push(
+        `<g class="stdlib-chart-legend-item stdlib-chart-series-${item.seriesIndex % 8}">`,
+      );
+      parts.push(
+        `<rect class="stdlib-chart-legend-swatch" x="${fmt(cursor)}" y="${fmt(baseY - SWATCH / 2)}" width="${SWATCH}" height="${SWATCH}" rx="1"/>`,
+      );
+      parts.push(
+        `<text class="stdlib-chart-legend-label" x="${fmt(cursor + SWATCH + SWATCH_GAP)}" y="${fmt(baseY)}" dominant-baseline="middle">${escapeXml(item.label)}</text>`,
+      );
+      parts.push(`</g>`);
+      cursor += row.widths[i]! + ITEM_GAP;
+    });
+  });
   parts.push(`</g>`);
-  return { svg: parts.join(""), height: HEIGHT };
+  return { svg: parts.join(""), height: rows.length * ROW_HEIGHT };
+};
+
+/** Measure the total height a legend with `items` will consume in `width`,
+ *  without actually rendering. Used by chart functions to reserve vertical
+ *  space before computing the plot area. */
+const measureLegendHeight = (
+  items: ReadonlyArray<{ label: string; seriesIndex: number }>,
+  width: number,
+): number => {
+  if (items.length === 0) return 0;
+  const ROW_HEIGHT = 20;
+  const ITEM_GAP = 16;
+  const SWATCH = 8;
+  const SWATCH_GAP = 4;
+  const charWidth = 6.5;
+  const availableWidth = Math.max(40, width - 8);
+  let curW = 0;
+  let rows = 1;
+  items.forEach((it, i) => {
+    const w = SWATCH + SWATCH_GAP + Math.max(it.label.length, 1) * charWidth;
+    const projected = i === 0 ? w : curW + ITEM_GAP + w;
+    if (i > 0 && projected > availableWidth) {
+      rows++;
+      curW = w;
+    } else {
+      curW = projected;
+    }
+  });
+  return rows * ROW_HEIGHT;
 };
 
 /** Wrap chart body in a root `<svg>` with embedded default styles. */
@@ -1599,8 +1660,14 @@ export const bar = (opts: BarChartOptions): string => {
 
 type PieChartOptions = ChartOptions & {
   data: SliceItem[];
-  /** Render slice labels with percentages outside the chart area. Default false. */
+  /** Render slice labels with percentages outside the chart area. Default false.
+   *  Note: for many small slices or one dominant slice, prefer `legend: true`
+   *  to avoid overlapping labels. */
   showLabels?: boolean;
+  /** Render a wrapping legend below the chart with `Label (XX%)` entries.
+   *  Recommended when slices are many or when one slice dominates — outside
+   *  labels collide in those cases. Default false. */
+  legend?: boolean;
   /** Inner radius as a fraction of outer radius (0..1). 0 = pie, 0.6 = donut.
    *  Values outside `[0, 0.95]` are clamped. */
   innerRadius?: number;
@@ -1619,13 +1686,24 @@ const renderPie = (opts: PieChartOptions, defaultInnerRadius: number): string =>
     return emptyChart(width, height, opts.className);
   }
 
+  // Build legend items up-front (need to measure height before laying out pie).
+  const legendItems = opts.legend
+    ? finite.map((d, i) => {
+        const ratio = d.value / total;
+        const pct = (ratio * 100).toFixed(ratio < 0.1 ? 1 : 0);
+        return { label: `${d.label} (${pct}%)`, seriesIndex: i };
+      })
+    : [];
+  const legendHeight = measureLegendHeight(legendItems, width);
+  const LEGEND_GAP = legendHeight > 0 ? 8 : 0;
+
   const innerRatio = Math.max(0, Math.min(0.95, opts.innerRadius ?? defaultInnerRadius));
   // Reserve outer margin for labels if requested.
   const baseMargin = 8;
   const labelMargin = opts.showLabels ? 60 : 0;
   const margin = baseMargin + labelMargin;
-  // Center vertically in the space below the header.
-  const availableHeight = height - header.height;
+  // Center vertically in the space below the header, above the legend.
+  const availableHeight = height - header.height - legendHeight - LEGEND_GAP;
   const cx = width / 2;
   const cy = header.height + availableHeight / 2;
   const r = Math.max(0, Math.min(width, availableHeight) / 2 - margin);
@@ -1655,16 +1733,22 @@ const renderPie = (opts: PieChartOptions, defaultInnerRadius: number): string =>
     a = a1;
   });
 
+  const legend = renderLegend(legendItems, width, height - legendHeight);
+
   return svgRoot(
     { width, height, className: opts.className },
-    header.svg + body.join(""),
+    header.svg + body.join("") + legend.svg,
   );
 };
 
 /**
  * Render a pie chart. Slices are drawn clockwise starting at 12 o'clock,
  * proportional to each item's `value`. Pass `showLabels: true` to render
- * `Label (XX%)` outside each slice.
+ * `Label (XX%)` outside each slice, or `legend: true` to render a wrapping
+ * legend below the chart.
+ *
+ * Use `legend` (not `showLabels`) when slices are many or one slice dominates —
+ * outside labels collide in those cases.
  *
  * Non-positive and non-finite values are filtered. A 100%-single-slice draws
  * a complete circle. Empty/all-zero input renders an empty-state SVG.
@@ -1674,6 +1758,9 @@ const renderPie = (opts: PieChartOptions, defaultInnerRadius: number): string =>
  *
  * @example
  * charts.pie({ data: [...], showLabels: true });
+ *
+ * @example
+ * charts.pie({ data: [...], legend: true }); // recommended for many small slices
  */
 export const pie = (opts: PieChartOptions): string => renderPie(opts, 0);
 
@@ -1687,6 +1774,9 @@ export const pie = (opts: PieChartOptions): string => renderPie(opts, 0);
  *
  * @example
  * charts.donut({ data: [...], innerRadius: 0.4, showLabels: true });
+ *
+ * @example
+ * charts.donut({ data: [...], legend: true }); // wrapping legend below the ring
  */
 export const donut = (opts: PieChartOptions): string => renderPie(opts, 0.6);
 
