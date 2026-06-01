@@ -69,10 +69,15 @@ sub-paths.
 ### Dates, Time & Scheduling
 | I need to... | Module | Entry point |
 |---|---|---|
+| Validate or normalize a user's IANA timezone | `dates.isValidTimeZone/normalizeTimeZone` | core |
 | Format dates (`"05 Mar 2025"`) with optional IANA timezone support | `dates.formatDate/formatDateTime` | core |
+| Convert a timezone-local `datetime-local` value to a stored UTC instant | `dates.zonedDateTimeToInstant` | core |
+| Convert a stored UTC instant to a `datetime-local` input value | `dates.instantToZonedInput` | core |
 | Show relative time (`"3 mins ago"`) | `dates.formatDateTimeRelative` | core |
 | Format durations | `dates.formatDuration` | core |
-| Build a calendar month grid in local time or a named timezone | `dates.getMonthGrid` | core |
+| Read calendar day keys, today, day bounds, and same-day checks in a named timezone | `dates.formatDateKey/today/startOfDay/endOfDay/isSameDay` | core |
+| Build calendar month/week grids and ranges in local time or a named timezone | `dates.getMonthGrid/getWeekDays/getDateRange` | core |
+| Add days/weeks/months/years while preserving timezone-local wall-clock time across DST | `dates.addZoned/addZonedInstant` | core |
 | Sleep / add jitter / random numbers | `timing.sleep/jitter/random/shuffle` | core |
 | Buffer writes (coalesce by key) | `timing.buffer` | core |
 | Enforce minimum load time | `timing.withMinLoadTime` | core |

@@ -325,10 +325,28 @@ dates.formatDateRelative(new Date());                // "14:30" (UTC default)
 dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day 3 hours"
 
 // Cloud apps: store UTC instants, edit in the app timezone
+const timeZone = dates.normalizeTimeZone(app.timeZone, "UTC");
+dates.isValidTimeZone(timeZone); // true
+
+const startsAtIso = dates.zonedDateTimeToInstant("2026-06-01T09:00", "Europe/Berlin");
+// "2026-06-01T07:00:00.000Z"
+
 const inputValue = dates.instantToZonedInput(event.startsAt, app.timeZone);
 const startsAt = dates.zonedDateTimeToInstant(inputValue, app.timeZone);
 
+// Native datetime-local input values
+dates.instantToZonedInput("2026-06-01T07:00:00.000Z", "Europe/Berlin");
+// "2026-06-01T09:00"
+
+// Calendar day queries in the user's timezone
+dates.formatDateKey(new Date(), { timeZone });
+dates.today({ timeZone });
+dates.startOfDay("2026-06-01", { timeZone });
+dates.endOfDay("2026-06-01", { timeZone });
+dates.isSameDay(new Date(event.startsAt), new Date(), { timeZone });
+
 // Recurring calendar events: keep "09:00 Europe/Berlin" at 09:00 across DST
+const nextWallClock = dates.addZoned("2026-06-01T09:00", { timeZone, days: 7 });
 const nextStartsAt = dates.addZonedInstant(event.startsAt, {
   timeZone: event.timeZone,
   weeks: 1,
@@ -428,6 +446,19 @@ const nextMonth = dates.addMonths(new Date(), 1, { timeZone: "Europe/Berlin" });
 dates.formatMonthYear(new Date(), "de");  // "März 2025"
 dates.weekdays("fr");                      // ["lun.", "mar.", ...]
 dates.formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "America/New_York" }); // "2025-03-04"
+
+// Cloud timezone helpers
+const timeZone = dates.normalizeTimeZone(app.timeZone, "UTC");
+const dayKey = dates.formatDateKey(event.startsAt, { timeZone });
+const startsAtInput = dates.instantToZonedInput(event.startsAt, timeZone);
+const storedStartsAt = dates.zonedDateTimeToInstant(startsAtInput, timeZone);
+const dayStart = dates.startOfDay(dayKey, { timeZone });
+const dayEnd = dates.endOfDay(dayKey, { timeZone });
+const isCurrentUserDay = dates.isSameDay(new Date(event.startsAt), new Date(), { timeZone });
+
+// DST-safe recurrence. There is no addZonedDays alias; use days/weeks on addZoned.
+dates.addZoned("2026-06-01T09:00", { timeZone: "Europe/Berlin", days: 7 });
+dates.addZonedInstant("2026-06-01T07:00:00.000Z", { timeZone: "Europe/Berlin", weeks: 1 });
 ```
 
 **Gotchas:**
