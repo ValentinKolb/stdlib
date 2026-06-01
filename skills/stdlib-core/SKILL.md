@@ -4,8 +4,8 @@ description: >
   ALWAYS use when code imports from "@valentinkolb/stdlib" or when the user needs
   encoding (Base64/Hex/Base32/Base62), hashing (SHA-256, FNV-1a), cryptography (asymmetric
   ECDSA+ECDH key pairs, symmetric AES-256-GCM encryption, TOTP two-factor auth),
-  password generation and strength analysis (random, memorable, PIN, strength), date/time formatting (UTC dates,
-  relative time, durations, time spans), calendar utilities (month/week grids,
+  password generation and strength analysis (random, memorable, PIN, strength), date/time formatting (UTC defaults,
+  IANA timezone support, relative time, durations, time spans), calendar utilities (month/week grids,
   date range calculation, item filtering, navigation helpers), timing helpers
   (sleep, buffer, jitter, random, shuffle, withMinLoadTime, debounce, throttle),
   streaming (SSE parsing, NDJSON parsing), text manipulation
@@ -287,16 +287,23 @@ const weak = password.strength("password123");
 
 ## dates
 
-UTC-based date formatting. All functions accept `string | Date` and are timezone-independent (UTC methods).
+Date formatting and calendar helpers with full IANA timezone support via `DateContext`.
+Existing calls keep their current behavior: absolute formatters default to UTC, calendar helpers default to runtime-local time.
 
 ### API
 
 ```ts
-dates.formatDate(input: string | Date): string              // "05 Mar 2025"
-dates.formatDateTime(input: string | Date): string           // "05 Mar 2025, 13:53"
-dates.formatDateTimeRelative(input: string | Date): string   // "just now", "4 mins ago", "Yesterday", "Mon", or formatDate
-dates.formatDateRelative(input: string | Date): string       // "14:30" (today), "Yesterday", "Mon", or formatDate
-dates.formatTimeSpan(input: string | Date, base?: string | Date): string  // Intl.RelativeTimeFormat: "in 3 days", "2 hours ago"
+type DateContext = {
+  timeZone?: string;      // IANA, e.g. "Europe/Berlin"
+  locale?: string;        // BCP 47, e.g. "de"
+  weekStartsOn?: 0 | 1;   // Sunday or Monday, default Monday
+};
+
+dates.formatDate(input: string | Date, ctx?: DateContext): string              // "05 Mar 2025"
+dates.formatDateTime(input: string | Date, ctx?: DateContext): string          // "05 Mar 2025, 13:53"
+dates.formatDateTimeRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
+dates.formatDateRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
+dates.formatTimeSpan(input: string | Date, baseOrCtx?: string | Date | DateContext, ctx?: DateContext): string
 dates.formatDuration(from: string | Date, to: string | Date): string      // "2 hours 15 minutes", "1 day 3 hours"
 ```
 
@@ -307,8 +314,9 @@ import { dates } from "@valentinkolb/stdlib";
 
 dates.formatDate("2025-03-05T13:53:00Z");          // "05 Mar 2025"
 dates.formatDateTime("2025-03-05T13:53:00Z");       // "05 Mar 2025, 13:53"
+dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" }); // "06 Mar 2025, 00:30"
 dates.formatDateTimeRelative(new Date());            // "just now"
-dates.formatDateRelative(new Date());                // "14:30" (current UTC time)
+dates.formatDateRelative(new Date());                // "14:30" (UTC default)
 dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day 3 hours"
 ```
 
@@ -338,47 +346,47 @@ type CalendarUrlParams = { view?: "month" | "week"; date?: Date; item?: string }
 
 ```ts
 // Grid generation
-dates.getMonthGrid(year: number, month: number): Date[][]   // month is 0-indexed, returns 4-6 weeks of 7 days
-dates.getWeekDays(date: Date): Date[]                        // 7 days, Monday-Sunday
+dates.getMonthGrid(year: number, month: number, ctx?: DateContext): Date[][]   // month is 0-indexed, returns 4-6 weeks
+dates.getWeekDays(date: Date, ctx?: DateContext): Date[]                       // 7 days, Monday-Sunday
 
 // Date ranges
-dates.getDateRange(view: "month" | "week", date: Date): { from: Date; to: Date }
+dates.getDateRange(view: "month" | "week", date: Date, ctx?: DateContext): { from: Date; to: Date }
 
 // Item filtering
-dates.itemOnDate(item: CalendarItemLike, date: Date): boolean
-dates.getDayItems<T extends CalendarItemLike>(items: T[], date: Date): T[]
+dates.itemOnDate(item: CalendarItemLike, date: Date, ctx?: DateContext): boolean
+dates.getDayItems<T extends CalendarItemLike>(items: T[], date: Date, ctx?: DateContext): T[]
 
 // Date checks
-dates.isToday(date: Date): boolean
-dates.isSameMonth(date: Date, refDate: Date): boolean
-dates.isSameDay(a: Date, b: Date): boolean
+dates.isToday(date: Date, ctx?: DateContext): boolean
+dates.isSameMonth(date: Date, refDate: Date, ctx?: DateContext): boolean
+dates.isSameDay(a: Date, b: Date, ctx?: DateContext): boolean
 
-// Locale-aware formatting
-dates.formatMonthYear(date: Date, locale?: string): string   // "March 2025"
-dates.formatDayNumber(date: Date): string                     // "9"
-dates.formatWeekdayShort(date: Date, locale?: string): string // "Mon"
-dates.formatWeekdayLong(date: Date, locale?: string): string  // "Wednesday"
-dates.formatFullDate(date: Date, locale?: string): string     // "March 9, 2025"
-dates.formatDateShort(date: Date, locale?: string): string    // "3/9"
-dates.formatDateKey(date: Date): string                       // "2025-03-09"
-dates.formatTime(iso: string): string                         // "14:30"
+// Locale/timezone-aware formatting
+dates.formatMonthYear(date: Date, localeOrCtx?: string | DateContext): string  // "March 2025"
+dates.formatDayNumber(date: Date, ctx?: DateContext): string                   // "9"
+dates.formatWeekdayShort(date: Date, localeOrCtx?: string | DateContext): string
+dates.formatWeekdayLong(date: Date, localeOrCtx?: string | DateContext): string
+dates.formatFullDate(date: Date, localeOrCtx?: string | DateContext): string
+dates.formatDateShort(date: Date, ctx?: DateContext): string
+dates.formatDateKey(date: Date, ctx?: DateContext): string                     // "2025-03-09"
+dates.formatTime(input: string | Date, ctx?: DateContext): string              // "14:30"
 
 // Navigation
-dates.addMonths(date: Date, n: number): Date
-dates.addWeeks(date: Date, n: number): Date
-dates.addDays(date: Date, n: number): Date
-dates.startOfMonth(date: Date): Date
-dates.startOfWeek(date: Date): Date                           // Monday (ISO)
-dates.today(): Date                                           // start of current day
+dates.addMonths(date: Date, n: number, ctx?: DateContext): Date
+dates.addWeeks(date: Date, n: number, ctx?: DateContext): Date
+dates.addDays(date: Date, n: number, ctx?: DateContext): Date
+dates.startOfMonth(date: Date, ctx?: DateContext): Date
+dates.startOfWeek(date: Date, ctx?: DateContext): Date                         // Monday by default
+dates.today(ctx?: DateContext): Date                                           // start of current day
 
 // Dynamic locale-aware constants
-dates.weekdays(locale?: string, style?: "short" | "long"): string[]  // ["Mon","Tue",...] or ["Monday",...]
-dates.months(locale?: string, style?: "short" | "long"): string[]    // ["January",...] or ["Jan",...]
-dates.getYearOptions(): number[]                              // current year +/- 5
+dates.weekdays(localeOrCtx?: string | DateContext): string[]  // ["Mon","Tue",...]
+dates.months(localeOrCtx?: string | DateContext): string[]    // ["January",...]
+dates.getYearOptions(ctx?: DateContext): number[]             // current year +/- 5
 
 // URL helpers
-dates.buildCalendarUrl(baseUrl: string, params: CalendarUrlParams): string
-dates.parseCalendarDate(param: string | undefined): Date
+dates.buildCalendarUrl(baseUrl: string, params: CalendarUrlParams, ctx?: DateContext): string
+dates.parseCalendarDate(param: string | undefined, ctx?: DateContext): Date
 ```
 
 ### Examples
@@ -389,23 +397,26 @@ import { dates } from "@valentinkolb/stdlib";
 const weeks = dates.getMonthGrid(2025, 2);  // March 2025
 // weeks[0] = [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
 
-const range = dates.getDateRange("month", new Date());
+const range = dates.getDateRange("month", new Date(), { timeZone: "Europe/Berlin" });
 // { from: Date, to: Date } -- full month incl. padding days
 
-const items = dates.getDayItems(allItems, new Date());
+const items = dates.getDayItems(allItems, new Date(), { timeZone: "Europe/Berlin" });
 // only items that overlap today
 
-const nextMonth = dates.addMonths(new Date(), 1);
+const nextMonth = dates.addMonths(new Date(), 1, { timeZone: "Europe/Berlin" });
 
 // Locale-aware
 dates.formatMonthYear(new Date(), "de");  // "März 2025"
 dates.weekdays("fr");                      // ["lun.", "mar.", ...]
+dates.formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "America/New_York" }); // "2025-03-04"
 ```
 
 **Gotchas:**
 - `month` parameter is 0-indexed (0 = January).
 - `getMonthGrid` includes padding days from adjacent months.
-- All formatting uses native `Intl.DateTimeFormat` — supports any locale.
+- Date values are still instants. `timeZone` controls how those instants are read as civil calendar days.
+- Calendar ranges return Date instants for the start/end of the zoned civil range.
+- Formatting uses native `Intl.DateTimeFormat`; timezone arithmetic uses dayjs `utc` + `timezone`.
 
 ---
 

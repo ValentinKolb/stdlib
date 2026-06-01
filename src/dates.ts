@@ -1,6 +1,27 @@
+import dayjs from "dayjs";
+import timezone from "dayjs/plugin/timezone";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 // =============================================================================
 // Types
 // =============================================================================
+
+export type DateContext = {
+  /** IANA timezone, e.g. "Europe/Berlin" or "America/New_York". */
+  timeZone?: string;
+  /** BCP 47 locale tag, e.g. "en", "de", "fr". */
+  locale?: string;
+  /** First day of week. Defaults to ISO Monday. */
+  weekStartsOn?: 0 | 1;
+};
+
+export type RelativeDateContext = DateContext & {
+  /** Base timestamp for relative formatting. Defaults to now. */
+  base?: string | Date;
+};
 
 export type CalendarItemLike = {
   startsAt: string | null;
@@ -14,6 +35,8 @@ export type CalendarUrlParams = {
   item?: string;
 };
 
+type LocaleOrContext = string | DateContext;
+
 // =============================================================================
 // Internals (helpers)
 // =============================================================================
@@ -22,29 +45,108 @@ const pluralize = (value: number, unit: string): string => `${value} ${unit}${va
 
 const formatDurationPart = (value: number, label: string): string => `${value} ${label}${value === 1 ? "" : "s"}`;
 
-/**
- * Coerce a string or `Date` input into a `Date` object.
- * If the input is already a `Date`, it is returned as-is.
- */
-const asDate = (input: string | Date): Date => (typeof input === "string" ? new Date(input) : input);
+const isContext = (value: unknown): value is DateContext =>
+  typeof value === "object" && value !== null && !(value instanceof Date);
 
-/** Return midnight of the same calendar day (local time). */
-const startOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-/** Return 23:59:59.999 of the same calendar day (local time). */
-const endOfDay = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-
-/** Return the Monday (ISO week start) of the week containing `d`. */
-const isoWeekStart = (d: Date): Date => {
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+const normalizeContext = (input?: LocaleOrContext): DateContext => {
+  if (typeof input === "string") return { locale: input };
+  return input ?? {};
 };
 
-/** Return Sunday 23:59:59.999 (ISO week end) of the week containing `d`. */
-const isoWeekEnd = (d: Date): Date => {
-  const mon = isoWeekStart(d);
-  return new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 23, 59, 59, 999);
+const asDate = (input: string | Date): Date => (typeof input === "string" ? new Date(input) : input);
+
+const pad2 = (value: number): string => String(value).padStart(2, "0");
+
+const contextLocale = (context: DateContext | undefined, fallback = "en"): string => context?.locale ?? fallback;
+
+const contextTimeZone = (context: DateContext | undefined, fallback?: string): string | undefined => context?.timeZone ?? fallback;
+
+const zoned = (input: string | Date, context?: DateContext, fallbackTimeZone?: string): dayjs.Dayjs => {
+  const zone = contextTimeZone(context, fallbackTimeZone);
+  const value = asDate(input);
+  return zone ? dayjs(value).tz(zone) : dayjs(value);
+};
+
+const zonedNow = (context?: DateContext, fallbackTimeZone?: string): dayjs.Dayjs => {
+  const zone = contextTimeZone(context, fallbackTimeZone);
+  return zone ? dayjs().tz(zone) : dayjs();
+};
+
+const zonedLocalDate = (year: number, month: number, day: number, context?: DateContext): dayjs.Dayjs => {
+  if (!context?.timeZone) return dayjs(new Date(year, month, day));
+
+  // Preserve JavaScript Date overflow semantics (e.g. Jan 31 + 1 month = Mar 3)
+  // before anchoring the resulting civil date in the requested timezone.
+  const overflow = new Date(Date.UTC(year, month, day));
+  const y = overflow.getUTCFullYear();
+  const m = overflow.getUTCMonth() + 1;
+  const d = overflow.getUTCDate();
+  return dayjs.tz(`${y}-${pad2(m)}-${pad2(d)}`, context.timeZone);
+};
+
+const startOfZonedDay = (input: string | Date, context?: DateContext): Date => {
+  if (!context?.timeZone) {
+    const d = asDate(input);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  return zoned(input, context).startOf("day").toDate();
+};
+
+const endOfZonedDay = (input: string | Date, context?: DateContext): Date => {
+  if (!context?.timeZone) {
+    const d = asDate(input);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+  }
+  return zoned(input, context).endOf("day").toDate();
+};
+
+const weekStart = (input: string | Date, context?: DateContext): dayjs.Dayjs => {
+  const d = zoned(input, context);
+  const firstDay = context?.weekStartsOn ?? 1;
+  const diff = (d.day() - firstDay + 7) % 7;
+  const start = d.subtract(diff, "day");
+  return zonedLocalDate(start.year(), start.month(), start.date(), context);
+};
+
+const weekEnd = (input: string | Date, context?: DateContext): Date => {
+  const start = weekStart(input, context);
+  const end = zonedLocalDate(start.year(), start.month(), start.date() + 6, context).endOf("day");
+  return end.toDate();
+};
+
+const intlParts = (
+  input: string | Date,
+  context: DateContext | undefined,
+  fallbackTimeZone: string | undefined,
+  options: Intl.DateTimeFormatOptions,
+): Record<string, string> => {
+  const formatter = new Intl.DateTimeFormat(contextLocale(context), {
+    ...options,
+    timeZone: contextTimeZone(context, fallbackTimeZone),
+  });
+  const result: Record<string, string> = {};
+  for (const part of formatter.formatToParts(asDate(input))) {
+    if (part.type !== "literal") result[part.type] = part.value;
+  }
+  return result;
+};
+
+const monthName = (input: string | Date, context?: DateContext, width: "short" | "long" = "long", fallbackTimeZone?: string): string =>
+  new Intl.DateTimeFormat(contextLocale(context), {
+    month: width,
+    timeZone: contextTimeZone(context, fallbackTimeZone),
+  }).format(asDate(input));
+
+const weekdayName = (input: string | Date, context?: DateContext, width: "short" | "long" = "short", fallbackTimeZone?: string): string =>
+  new Intl.DateTimeFormat(contextLocale(context), {
+    weekday: width,
+    timeZone: contextTimeZone(context, fallbackTimeZone),
+  }).format(asDate(input));
+
+const sameZonedDay = (a: string | Date, b: string | Date, context?: DateContext, fallbackTimeZone?: string): boolean => {
+  const da = zoned(a, context, fallbackTimeZone);
+  const db = zoned(b, context, fallbackTimeZone);
+  return da.year() === db.year() && da.month() === db.month() && da.date() === db.date();
 };
 
 // =============================================================================
@@ -52,109 +154,84 @@ const isoWeekEnd = (d: Date): Date => {
 // =============================================================================
 
 /**
- * Format a date as `"05 Mar 2025"` using UTC components.
+ * Format a date as `"05 Mar 2025"`.
  *
- * All date parts (day, month, year) are extracted via UTC methods so the
- * result is timezone-independent.
+ * Defaults to UTC for backward compatibility. Pass `timeZone` to format the
+ * same instant in an explicit IANA timezone.
  */
-export const formatDate = (input: string | Date): string => {
-  const d = asDate(input);
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" }).format(d);
-  const year = d.getUTCFullYear();
-  return `${day} ${month} ${year}`;
+export const formatDate = (input: string | Date, context?: DateContext): string => {
+  const parts = intlParts(input, context, "UTC", { day: "2-digit", month: "short", year: "numeric" });
+  return `${parts.day} ${parts.month} ${parts.year}`;
 };
 
 /**
- * Format a date and time as `"05 Mar 2025, 13:53"` using UTC components.
+ * Format a date and time as `"05 Mar 2025, 13:53"`.
  *
- * Combines {@link formatDate} with the UTC hours and minutes.
+ * Defaults to UTC for backward compatibility. Pass `timeZone` to format the
+ * same instant in an explicit IANA timezone.
  */
-export const formatDateTime = (input: string | Date): string => {
-  const d = asDate(input);
-  const hours = String(d.getUTCHours()).padStart(2, "0");
-  const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-  return `${formatDate(d)}, ${hours}:${minutes}`;
+export const formatDateTime = (input: string | Date, context?: DateContext): string => {
+  const d = zoned(input, context, "UTC");
+  return `${formatDate(input, context)}, ${pad2(d.hour())}:${pad2(d.minute())}`;
 };
 
 /**
  * Format a date/time as a human-friendly relative string.
  *
- * Uses progressively coarser buckets based on how far in the past the date is:
- * - **< 5 seconds**: `"just now"`
- * - **< 1 minute**: `"12 secs ago"`
- * - **< 1 hour**: `"4 mins ago"`
- * - **< 24 hours**: `"2 hours ago"`
- * - **< 48 hours**: `"Yesterday"`
- * - **< 7 days**: weekday name (e.g. `"Mon"`) looked up via UTC day-of-week
- * - **>= 7 days** or future dates: falls back to {@link formatDate} (UTC).
- *
- * All time arithmetic is based on millisecond difference; the weekday label
- * uses UTC for consistency with the rest of the UTC-based pipeline.
+ * Time arithmetic uses absolute milliseconds. Day labels and fallback absolute
+ * dates are rendered in the requested timezone, defaulting to UTC.
  */
-export const formatDateTimeRelative = (input: string | Date): string => {
+export const formatDateTimeRelative = (input: string | Date, context?: RelativeDateContext): string => {
   const d = asDate(input);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
+  const base = context?.base ? asDate(context.base) : new Date();
+  const diffMs = base.getTime() - d.getTime();
 
-  if (diffMs < 0) return formatDate(d);
+  if (diffMs < 0) return formatDate(d, context);
   if (diffMs < 5_000) return "just now";
   if (diffMs < 60_000) return pluralize(Math.max(1, Math.floor(diffMs / 1_000)), "sec");
   if (diffMs < 60 * 60 * 1000) return pluralize(Math.max(1, Math.floor(diffMs / (60 * 1000))), "min");
   if (diffMs < 24 * 60 * 60 * 1000) return pluralize(Math.max(1, Math.floor(diffMs / (60 * 60 * 1000))), "hour");
   if (diffMs < 48 * 60 * 60 * 1000) return "Yesterday";
-  if (diffMs < 7 * 24 * 60 * 60 * 1000) {
-    return new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(d);
-  }
-  return formatDate(d);
+  if (diffMs < 7 * 24 * 60 * 60 * 1000) return weekdayName(d, context, "short", "UTC");
+  return formatDate(d, context);
 };
 
 /**
  * Format a date relative to now with day-level granularity.
  *
- * - **Today**: UTC time as `"HH:MM"` (e.g. `"14:30"`)
- * - **Yesterday**: `"Yesterday"`
- * - **Within 7 days**: three-letter UTC weekday (e.g. `"Mon"`)
- * - **Older / future**: falls back to {@link formatDate} (UTC)
- *
- * Day boundaries are computed in UTC so the result is timezone-independent.
+ * Day boundaries are evaluated in the requested timezone, defaulting to UTC
+ * for backward compatibility.
  */
-export const formatDateRelative = (input: string | Date): string => {
+export const formatDateRelative = (input: string | Date, context?: RelativeDateContext): string => {
   const d = asDate(input);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  if (diffMs < 0) return formatDate(d);
+  const base = context?.base ? asDate(context.base) : new Date();
+  if (d.getTime() > base.getTime()) return formatDate(d, context);
 
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const dateDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const diffDays = Math.floor((todayStart.getTime() - dateDay.getTime()) / (1000 * 60 * 60 * 24));
+  const todayStart = zoned(base, context, "UTC").startOf("day");
+  const dateDay = zoned(d, context, "UTC").startOf("day");
+  const diffDays = todayStart.diff(dateDay, "day");
 
   if (diffDays === 0) {
-    const hours = String(d.getUTCHours()).padStart(2, "0");
-    const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-    return `${hours}:${minutes}`;
+    const time = zoned(d, context, "UTC");
+    return `${pad2(time.hour())}:${pad2(time.minute())}`;
   }
-
   if (diffDays === 1) return "Yesterday";
-
-  if (diffDays < 7) {
-    return new Intl.DateTimeFormat("en", { weekday: "short", timeZone: "UTC" }).format(d);
-  }
-
-  return formatDate(d);
+  if (diffDays < 7) return weekdayName(d, context, "short", "UTC");
+  return formatDate(d, context);
 };
 
 /**
  * Format a timestamp relative to a base time using `Intl.RelativeTimeFormat`.
  *
- * Produces locale-aware strings like `"in 3 days"` or `"2 hours ago"`.
- * The unit is chosen automatically based on the absolute difference:
- * - **< 1 hour** -- minutes
- * - **< 1 day** -- hours
- * - **< 1 week** -- days
- * - **>= 1 week** -- weeks
+ * Timezone does not affect elapsed time, but `locale` controls the wording.
  */
-export const formatTimeSpan = (input: string | Date, base: string | Date = new Date()): string => {
+export const formatTimeSpan = (
+  input: string | Date,
+  baseOrContext: string | Date | DateContext = new Date(),
+  context?: DateContext,
+): string => {
+  const ctx = isContext(baseOrContext) ? baseOrContext : context;
+  const base = isContext(baseOrContext) ? new Date() : baseOrContext;
   const target = asDate(input);
   const origin = asDate(base);
   const diffMs = target.getTime() - origin.getTime();
@@ -163,7 +240,7 @@ export const formatTimeSpan = (input: string | Date, base: string | Date = new D
   const hour = 60 * minute;
   const day = 24 * hour;
   const week = 7 * day;
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(ctx?.locale, { numeric: "auto" });
 
   if (absMs < hour) return rtf.format(Math.round(diffMs / minute), "minute");
   if (absMs < day) return rtf.format(Math.round(diffMs / hour), "hour");
@@ -173,12 +250,6 @@ export const formatTimeSpan = (input: string | Date, base: string | Date = new D
 
 /**
  * Format an absolute duration between two timestamps as a human-readable string.
- *
- * The result is order-agnostic -- `formatDuration(a, b)` and `formatDuration(b, a)`
- * produce the same output because `Math.abs` is used internally.
- *
- * Output examples: `"less than a minute"`, `"2 hours"`, `"1 day 3 hours"`.
- * At most two units are shown (days + hours, or hours + minutes).
  */
 export const formatDuration = (from: string | Date, to: string | Date): string => {
   const start = asDate(from);
@@ -203,278 +274,169 @@ export const formatDuration = (from: string | Date, to: string | Date): string =
   return formatDurationPart(minutes, "minute");
 };
 
-/**
- * Format a date as its full month name and year, e.g. `"March 2025"`.
- *
- * @param locale - BCP 47 locale tag (default: `"en"`). Examples: `"de"`, `"fr"`, `"ja"`.
- */
-export const formatMonthYear = (date: Date, locale?: string): string =>
-  new Intl.DateTimeFormat(locale ?? "en", { month: "long", year: "numeric" }).format(date);
-
-/**
- * Format a date as its day-of-month number without leading zeros, e.g. `"9"`.
- */
-export const formatDayNumber = (date: Date): string => String(date.getDate());
-
-/**
- * Format a date as its two-letter weekday abbreviation, e.g. `"Mo"`, `"Tu"`.
- *
- * @param locale - BCP 47 locale tag (default: `"en"`). Examples: `"de"`, `"fr"`, `"ja"`.
- */
-export const formatWeekdayShort = (date: Date, locale?: string): string =>
-  new Intl.DateTimeFormat(locale ?? "en", { weekday: "short" }).format(date).slice(0, 2);
-
-/**
- * Format a date as its full weekday name, e.g. `"Wednesday"`.
- *
- * @param locale - BCP 47 locale tag (default: `"en"`). Examples: `"de"`, `"fr"`, `"ja"`.
- */
-export const formatWeekdayLong = (date: Date, locale?: string): string =>
-  new Intl.DateTimeFormat(locale ?? "en", { weekday: "long" }).format(date);
-
-/**
- * Format a date in long European style, e.g. `"9. March 2025"`.
- *
- * @param locale - BCP 47 locale tag (default: `"en"`). Examples: `"de"`, `"fr"`, `"ja"`.
- */
-export const formatFullDate = (date: Date, locale?: string): string => {
-  const day = date.getDate();
-  const month = new Intl.DateTimeFormat(locale ?? "en", { month: "long" }).format(date);
-  const year = date.getFullYear();
-  return `${day}. ${month} ${year}`;
+export const formatMonthYear = (date: Date, localeOrContext?: LocaleOrContext): string => {
+  const context = normalizeContext(localeOrContext);
+  const z = zoned(date, context);
+  return `${monthName(date, context, "long")} ${z.year()}`;
 };
 
-/**
- * Format a date as a short day.month string, e.g. `"9.3."`.
- */
-export const formatDateShort = (date: Date): string => `${date.getDate()}.${date.getMonth() + 1}.`;
+export const formatDayNumber = (date: Date, context?: DateContext): string => String(zoned(date, context).date());
 
-/**
- * Format a date as an ISO-style `YYYY-MM-DD` key string.
- * Useful for weather lookups, map keys, and other date-indexed data.
- */
-export const formatDateKey = (date: Date): string => {
-  const y = String(date.getFullYear());
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+export const formatWeekdayShort = (date: Date, localeOrContext?: LocaleOrContext): string =>
+  weekdayName(date, normalizeContext(localeOrContext), "short").slice(0, 2);
+
+export const formatWeekdayLong = (date: Date, localeOrContext?: LocaleOrContext): string =>
+  weekdayName(date, normalizeContext(localeOrContext), "long");
+
+export const formatFullDate = (date: Date, localeOrContext?: LocaleOrContext): string => {
+  const context = normalizeContext(localeOrContext);
+  const z = zoned(date, context);
+  return `${z.date()}. ${monthName(date, context, "long")} ${z.year()}`;
 };
 
-/**
- * Format an ISO date-time string to a local `HH:mm` time string (24-hour).
- */
-export const formatTime = (iso: string): string => {
-  const d = new Date(iso);
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
+export const formatDateShort = (date: Date, context?: DateContext): string => {
+  const z = zoned(date, context);
+  return `${z.date()}.${z.month() + 1}.`;
+};
+
+export const formatDateKey = (date: Date, context?: DateContext): string => {
+  const z = zoned(date, context);
+  return `${z.year()}-${pad2(z.month() + 1)}-${pad2(z.date())}`;
+};
+
+export const formatTime = (input: string | Date, context?: DateContext): string => {
+  const d = zoned(input, context);
+  return `${pad2(d.hour())}:${pad2(d.minute())}`;
 };
 
 // =============================================================================
 // Comparison
 // =============================================================================
 
-/**
- * Check whether a date is today (local time, day-level precision).
- */
-export const isToday = (date: Date): boolean => {
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+export const isToday = (date: Date, context?: DateContext): boolean => sameZonedDay(date, new Date(), context);
+
+export const isSameMonth = (date: Date, refDate: Date, context?: DateContext): boolean => {
+  const a = zoned(date, context);
+  const b = zoned(refDate, context);
+  return a.year() === b.year() && a.month() === b.month();
 };
 
-/**
- * Check whether two dates fall in the same calendar month and year (local time).
- */
-export const isSameMonth = (date: Date, refDate: Date): boolean =>
-  date.getFullYear() === refDate.getFullYear() && date.getMonth() === refDate.getMonth();
-
-/**
- * Check whether two dates fall on the same calendar day (local time).
- */
-export const isSameDay = (a: Date, b: Date): boolean =>
-  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+export const isSameDay = (a: Date, b: Date, context?: DateContext): boolean => sameZonedDay(a, b, context);
 
 // =============================================================================
 // Arithmetic & Navigation
 // =============================================================================
 
-/**
- * Add (or subtract) a number of months from a date.
- * Day-of-month overflow is handled natively by `Date` (e.g. Jan 31 + 1 month = Mar 3).
- */
-export const addMonths = (date: Date, n: number): Date => new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
+export const addMonths = (date: Date, n: number, context?: DateContext): Date => {
+  if (!context?.timeZone) return new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
+  const z = zoned(date, context);
+  return zonedLocalDate(z.year(), z.month() + n, z.date(), context).toDate();
+};
 
-/**
- * Add (or subtract) a number of weeks from a date.
- */
-export const addWeeks = (date: Date, n: number): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n * 7);
+export const addWeeks = (date: Date, n: number, context?: DateContext): Date => addDays(date, n * 7, context);
 
-/**
- * Add (or subtract) a number of days from a date.
- */
-export const addDays = (date: Date, n: number): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+export const addDays = (date: Date, n: number, context?: DateContext): Date => {
+  if (!context?.timeZone) return new Date(date.getFullYear(), date.getMonth(), date.getDate() + n);
+  const z = zoned(date, context);
+  return zonedLocalDate(z.year(), z.month(), z.date() + n, context).toDate();
+};
 
-/**
- * Get the first day of the month containing the given date (midnight local time).
- */
-export const startOfMonth = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), 1);
+export const startOfMonth = (date: Date, context?: DateContext): Date => {
+  if (!context?.timeZone) return new Date(date.getFullYear(), date.getMonth(), 1);
+  const z = zoned(date, context);
+  return zonedLocalDate(z.year(), z.month(), 1, context).toDate();
+};
 
-/**
- * Get the Monday (ISO week start) of the week containing the given date.
- */
-export const startOfWeek = (date: Date): Date => isoWeekStart(date);
+export const startOfWeek = (date: Date, context?: DateContext): Date => weekStart(date, context).toDate();
 
-/**
- * Get today's date at the start of the day (midnight local time).
- */
-export const today = (): Date => startOfDay(new Date());
+export const today = (context?: DateContext): Date => startOfZonedDay(new Date(), context);
 
 // =============================================================================
 // Calendar Views
 // =============================================================================
 
-/**
- * Build a month grid of dates suitable for rendering a calendar view.
- *
- * The grid always starts on the ISO-week Monday before (or on) the first day
- * of the given month and contains complete 7-day rows. Rows from adjacent
- * months are included as padding so every week is full. The result contains
- * between 4 and 6 week-rows depending on how the month falls.
- *
- * @example
- * const weeks = getMonthGrid(2025, 0); // January 2025
- * // weeks.length is 5 (4-6 depending on month)
- * // weeks[0].length is always 7
- */
-export const getMonthGrid = (year: number, month: number): Date[][] => {
-  const first = new Date(year, month, 1);
-  const start = isoWeekStart(first);
+export const getMonthGrid = (year: number, month: number, context?: DateContext): Date[][] => {
+  const first = zonedLocalDate(year, month, 1, context);
+  const start = weekStart(first.toDate(), context);
 
   const weeks: Date[][] = [];
   let current = start;
 
   for (let w = 0; w < 6; w++) {
-    const week = Array.from({ length: 7 }, (_, d) => {
-      return new Date(current.getFullYear(), current.getMonth(), current.getDate() + d);
-    });
+    const week = Array.from({ length: 7 }, (_, d) =>
+      zonedLocalDate(current.year(), current.month(), current.date() + d, context).toDate(),
+    );
     weeks.push(week);
-    current = new Date(current.getFullYear(), current.getMonth(), current.getDate() + 7);
+    current = zonedLocalDate(current.year(), current.month(), current.date() + 7, context);
 
-    // Stop early if we've filled the month
-    if (current.getMonth() !== month && w >= 3) break;
+    if (current.month() !== month && w >= 3) break;
   }
 
   return weeks;
 };
 
-/**
- * Get the 7 days of the ISO week (Monday-first) that contains the given date.
- *
- * @example
- * const days = getWeekDays(new Date("2025-03-12")); // Wed
- * // days[0] is Monday 2025-03-10
- * // days[6] is Sunday 2025-03-16
- */
-export const getWeekDays = (date: Date): Date[] => {
-  const start = isoWeekStart(date);
-  return Array.from({ length: 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+export const getWeekDays = (date: Date, context?: DateContext): Date[] => {
+  const start = weekStart(date, context);
+  return Array.from({ length: 7 }, (_, i) =>
+    zonedLocalDate(start.year(), start.month(), start.date() + i, context).toDate(),
+  );
 };
 
-/**
- * Compute the start and end dates needed to fetch calendar items for a view.
- *
- * - **month**: spans from the Monday of the first ISO week through the Sunday
- *   of the last ISO week, covering all padding days shown in the grid.
- * - **week**: spans a single ISO week (Monday through Sunday).
- */
-export const getDateRange = (view: "month" | "week", date: Date): { from: Date; to: Date } => {
+export const getDateRange = (view: "month" | "week", date: Date, context?: DateContext): { from: Date; to: Date } => {
   if (view === "month") {
-    const first = new Date(date.getFullYear(), date.getMonth(), 1);
-    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    return { from: isoWeekStart(first), to: isoWeekEnd(lastDay) };
+    const z = zoned(date, context);
+    const first = zonedLocalDate(z.year(), z.month(), 1, context);
+    const last = zonedLocalDate(z.year(), z.month() + 1, 0, context);
+    return { from: weekStart(first.toDate(), context).toDate(), to: weekEnd(last.toDate(), context) };
   }
 
-  // week
-  return { from: isoWeekStart(date), to: isoWeekEnd(date) };
+  return { from: weekStart(date, context).toDate(), to: weekEnd(date, context) };
 };
 
 // =============================================================================
 // Calendar Item Filtering
 // =============================================================================
 
-/**
- * Determine whether a calendar item falls on a specific date.
- *
- * The check uses two strategies in priority order:
- * 1. If the item has both `startsAt` and `endsAt`, the item is considered
- *    "on" the date when its time range overlaps with any part of that day.
- * 2. Otherwise, if the item has a `deadline`, it matches when the deadline
- *    falls on the same calendar day.
- * 3. If neither condition is met the function returns `false`.
- *
- * All comparisons use local time.
- */
-export const itemOnDate = (item: CalendarItemLike, date: Date): boolean => {
-  const dayStart = startOfDay(date);
-  const dayEnd = endOfDay(date);
+export const itemOnDate = (item: CalendarItemLike, date: Date, context?: DateContext): boolean => {
+  const dayStart = startOfZonedDay(date, context);
+  const dayEnd = endOfZonedDay(date, context);
 
-  // Event with time range
   if (item.startsAt && item.endsAt) {
-    const start = new Date(item.startsAt);
-    const end = new Date(item.endsAt);
+    const start = asDate(item.startsAt);
+    const end = asDate(item.endsAt);
     return start.getTime() < dayEnd.getTime() && end.getTime() > dayStart.getTime();
   }
 
-  // Task with deadline
-  if (item.deadline) {
-    const dl = new Date(item.deadline);
-    return dl.getFullYear() === date.getFullYear() && dl.getMonth() === date.getMonth() && dl.getDate() === date.getDate();
-  }
+  if (item.deadline) return sameZonedDay(item.deadline, date, context);
 
   return false;
 };
 
-/**
- * Filter an array of calendar items to only those that fall on a given date.
- * Delegates to {@link itemOnDate} for the per-item check.
- */
-export const getDayItems = <T extends CalendarItemLike>(items: T[], date: Date): T[] => items.filter((item) => itemOnDate(item, date));
+export const getDayItems = <T extends CalendarItemLike>(items: T[], date: Date, context?: DateContext): T[] =>
+  items.filter((item) => itemOnDate(item, date, context));
 
 // =============================================================================
 // Constants & Generators
 // =============================================================================
 
-/**
- * Generate locale-aware weekday names in ISO order (Monday-first).
- * Uses 2024-01-01 (a Monday) as the reference date.
- *
- * @param locale - BCP 47 locale tag (default: `"en"`). Examples: `"de"`, `"fr"`, `"ja"`.
- * @returns An array of 7 short weekday names, e.g. `["Mon", "Tue", ...]`.
- */
-export const weekdays = (locale?: string): string[] =>
-  Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(2024, 0, i + 1); // 2024-01-01 is Monday
-    return new Intl.DateTimeFormat(locale ?? "en", { weekday: "short" }).format(d);
+export const weekdays = (localeOrContext?: LocaleOrContext): string[] => {
+  const context = normalizeContext(localeOrContext);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = zonedLocalDate(2024, 0, i + 1, context).toDate();
+    return weekdayName(d, context, "short");
   });
+};
 
-/**
- * Generate locale-aware month names.
- *
- * @param locale - BCP 47 locale tag (default: `"en"`). Examples: `"de"`, `"fr"`, `"ja"`.
- * @returns An array of 12 long month names, e.g. `["January", "February", ...]`.
- */
-export const months = (locale?: string): string[] =>
-  Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(2024, i, 1);
-    return new Intl.DateTimeFormat(locale ?? "en", { month: "long" }).format(d);
+export const months = (localeOrContext?: LocaleOrContext): string[] => {
+  const context = normalizeContext(localeOrContext);
+  return Array.from({ length: 12 }, (_, i) => {
+    const d = zonedLocalDate(2024, i, 1, context).toDate();
+    return monthName(d, context, "long");
   });
+};
 
-/**
- * Generate an array of year numbers for a dropdown selector.
- * Returns 11 values centered on the current year (current year +/- 5).
- */
-export const getYearOptions = (): number[] => {
-  const current = new Date().getFullYear();
+export const getYearOptions = (context?: DateContext): number[] => {
+  const current = zonedNow(context).year();
   return Array.from({ length: 11 }, (_, i) => current - 5 + i);
 };
 
@@ -482,70 +444,36 @@ export const getYearOptions = (): number[] => {
 // URL Helpers
 // =============================================================================
 
-/**
- * Build a calendar URL by merging calendar-specific query parameters into a base URL.
- *
- * Always sets `view=calendar`. Additionally sets `cv` (calendar view), `cd` (calendar date
- * as `YYYY-MM-DD`), and `item` when the corresponding fields in `params` are provided.
- * Parameters that are `undefined` are removed from the resulting URL.
- *
- * Existing query parameters on `baseUrl` are preserved unless overridden.
- */
-export const buildCalendarUrl = (baseUrl: string, params: CalendarUrlParams): string => {
+export const buildCalendarUrl = (baseUrl: string, params: CalendarUrlParams, context?: DateContext): string => {
   const [path, query] = baseUrl.split("?");
   const searchParams = new URLSearchParams(query ?? "");
 
   searchParams.set("view", "calendar");
 
-  if (params.view) {
-    searchParams.set("cv", params.view);
-  } else {
-    searchParams.delete("cv");
-  }
+  if (params.view) searchParams.set("cv", params.view);
+  else searchParams.delete("cv");
 
-  if (params.date) {
-    searchParams.set("cd", formatDateKey(params.date));
-  } else {
-    searchParams.delete("cd");
-  }
+  if (params.date) searchParams.set("cd", formatDateKey(params.date, context));
+  else searchParams.delete("cd");
 
-  if (params.item) {
-    searchParams.set("item", params.item);
-  } else {
-    searchParams.delete("item");
-  }
+  if (params.item) searchParams.set("item", params.item);
+  else searchParams.delete("item");
 
   return `${path}?${searchParams.toString()}`;
 };
 
-/**
- * Parse a `YYYY-MM-DD` date string from a URL query parameter into a `Date`.
- *
- * The returned `Date` is anchored at local-midnight (matching the rest of
- * the calendar API, which operates on local-time days). Without this fix,
- * `new Date("2025-03-05")` would be parsed as UTC and read as the previous
- * day in negative-offset timezones — silently breaking calendar URLs in
- * the Americas while passing tests in Europe.
- *
- * Returns today's date (via {@link today}) when the parameter is missing or
- * invalid.
- */
-export const parseCalendarDate = (param: string | undefined): Date => {
-  if (!param) return today();
+export const parseCalendarDate = (param: string | undefined, context?: DateContext): Date => {
+  if (!param) return today(context);
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(param);
   if (match) {
     const [, y, m, d] = match;
-    const date = new Date(Number(y), Number(m) - 1, Number(d));
-    if (!isNaN(date.getTime())) return date;
+    const date = zonedLocalDate(Number(y), Number(m) - 1, Number(d), context);
+    if (date.isValid()) return date.toDate();
   }
-  // Fallback: try lenient parse (handles ISO datetimes etc.) but normalize
-  // to local-midnight of the parsed day so downstream calendar logic stays
-  // timezone-correct.
-  const lenient = new Date(param);
-  if (!isNaN(lenient.getTime())) {
-    return new Date(lenient.getFullYear(), lenient.getMonth(), lenient.getDate());
-  }
-  return today();
+
+  const lenient = asDate(param);
+  if (!isNaN(lenient.getTime())) return startOfZonedDay(lenient, context);
+  return today(context);
 };
 
 // =============================================================================

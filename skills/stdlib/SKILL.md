@@ -69,10 +69,10 @@ sub-paths.
 ### Dates, Time & Scheduling
 | I need to... | Module | Entry point |
 |---|---|---|
-| Format dates (`"05 Mar 2025"`) | `dates.formatDate/formatDateTime` | core |
+| Format dates (`"05 Mar 2025"`) with optional IANA timezone support | `dates.formatDate/formatDateTime` | core |
 | Show relative time (`"3 mins ago"`) | `dates.formatDateTimeRelative` | core |
 | Format durations | `dates.formatDuration` | core |
-| Build a calendar month grid | `dates.getMonthGrid` | core |
+| Build a calendar month grid in local time or a named timezone | `dates.getMonthGrid` | core |
 | Sleep / add jitter / random numbers | `timing.sleep/jitter/random/shuffle` | core |
 | Buffer writes (coalesce by key) | `timing.buffer` | core |
 | Enforce minimum load time | `timing.withMinLoadTime` | core |

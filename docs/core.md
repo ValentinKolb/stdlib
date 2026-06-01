@@ -115,13 +115,27 @@ The memorable generator uses the EFF Short Wordlist 1 (1,296 words, 10.34 bits/w
 
 ## dates
 
-UTC date formatting and relative time strings. Zero dependencies.
+Date formatting, relative time, and calendar helpers with optional IANA timezone support.
+
+Most functions accept a final context object:
+
+```ts
+type DateContext = {
+  timeZone?: string;      // e.g. "Europe/Berlin", "America/New_York"
+  locale?: string;        // e.g. "en", "de", "fr"
+  weekStartsOn?: 0 | 1;   // Sunday or Monday, default Monday
+};
+```
+
+Existing calls keep their current behavior: absolute formatters default to UTC, calendar helpers default to the runtime's local timezone. Pass `timeZone` when the user's calendar day matters.
 
 ```ts
 import { dates } from "@valentinkolb/stdlib";
 
 dates.formatDate("2025-03-05T13:53:00Z");         // "05 Mar 2025"
 dates.formatDateTime("2025-03-05T13:53:00Z");      // "05 Mar 2025, 13:53"
+dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" });
+// "06 Mar 2025, 00:30"
 dates.formatDateTimeRelative(new Date());           // "just now"
 dates.formatDateRelative(new Date());               // "14:30"
 dates.formatTimeSpan("2025-03-10T00:00:00Z");       // "in 3 days"
@@ -138,20 +152,21 @@ import { dates } from "@valentinkolb/stdlib";
 const weeks = dates.getMonthGrid(2025, 0);  // January 2025, 2D array of Dates
 const days = dates.getWeekDays(new Date());  // Mon-Sun array
 const range = dates.getDateRange("month", new Date());
+const berlinRange = dates.getDateRange("week", new Date(), { timeZone: "Europe/Berlin" });
 
 dates.isToday(new Date());                  // true
-dates.isSameDay(a, b);
-dates.addMonths(new Date(), -1);
+dates.isSameDay(a, b, { timeZone: "America/New_York" });
+dates.addMonths(new Date(), -1, { timeZone: "Europe/Berlin" });
 dates.formatMonthYear(new Date());           // "March 2025"
 dates.formatMonthYear(new Date(), "de");     // "März 2025"
-dates.formatDateKey(new Date());             // "2025-03-05"
+dates.formatDateKey(new Date(), { timeZone: "Asia/Tokyo" }); // "2025-03-05"
 dates.weekdays("fr");                        // ["lun.", "mar.", ...]
 
 // Filter items that fall on a date
-const items = dates.getDayItems(allItems, date);
+const items = dates.getDayItems(allItems, date, { timeZone: "Europe/Berlin" });
 
 // Build calendar URLs
-dates.buildCalendarUrl("/app", { view: "week", date: new Date() });
+dates.buildCalendarUrl("/app", { view: "week", date: new Date() }, { timeZone: "Europe/Berlin" });
 ```
 
 ## fileIcons

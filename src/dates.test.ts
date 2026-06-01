@@ -77,6 +77,10 @@ describe("formatDateTime", () => {
   it("pads single-digit hours and minutes", () => {
     expect(formatDateTime("2025-01-01T03:05:00Z")).toBe("01 Jan 2025, 03:05");
   });
+
+  it("formats the same instant in an explicit IANA timezone", () => {
+    expect(formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" })).toBe("06 Mar 2025, 00:30");
+  });
 });
 
 // =============================================================================
@@ -165,6 +169,15 @@ describe("formatDateRelative", () => {
 
   it("returns formatted date for future timestamps", () => {
     expect(formatDateRelative("2025-04-05T12:00:00Z")).toBe("05 Apr 2025");
+  });
+
+  it("uses timezone day boundaries when provided", () => {
+    expect(
+      formatDateRelative("2025-03-05T23:30:00Z", {
+        base: "2025-03-06T01:00:00Z",
+        timeZone: "Europe/Berlin",
+      }),
+    ).toBe("00:30");
   });
 });
 
@@ -393,6 +406,13 @@ describe("isSameDay", () => {
   it("returns false for different dates", () => {
     expect(isSameDay(localDate("2025-03-05"), localDate("2025-03-06"))).toBe(false);
   });
+
+  it("compares calendar days in the requested timezone", () => {
+    const a = new Date("2025-03-05T23:30:00Z");
+    const b = new Date("2025-03-06T01:00:00Z");
+    expect(isSameDay(a, b, { timeZone: "Europe/Berlin" })).toBe(true);
+    expect(isSameDay(a, b, { timeZone: "UTC" })).toBe(false);
+  });
 });
 
 // =============================================================================
@@ -423,6 +443,15 @@ describe("formatting", () => {
 
   it("formatTime returns HH:mm", () => {
     expect(formatTime("2025-03-05T14:30:00")).toBe("14:30");
+  });
+
+  it("formatDateKey uses the requested timezone", () => {
+    expect(formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "America/New_York" })).toBe("2025-03-04");
+    expect(formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "Asia/Tokyo" })).toBe("2025-03-05");
+  });
+
+  it("formatTime uses the requested timezone", () => {
+    expect(formatTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" })).toBe("00:30");
   });
 });
 
@@ -515,6 +544,21 @@ describe("navigation", () => {
     const result = startOfWeek(localDate("2025-03-05")); // Wednesday
     expect(result.getDay()).toBe(1); // Monday
   });
+
+  it("addDays preserves zoned civil days across DST", () => {
+    const berlin = { timeZone: "Europe/Berlin" };
+    const start = parseCalendarDate("2026-03-29", berlin);
+    const next = addDays(start, 1, berlin);
+    expect(formatDateKey(next, berlin)).toBe("2026-03-30");
+    expect(next.toISOString()).toBe("2026-03-29T22:00:00.000Z");
+  });
+
+  it("startOfWeek returns the zoned Monday instant", () => {
+    const berlin = { timeZone: "Europe/Berlin" };
+    const result = startOfWeek(new Date("2026-03-29T12:00:00Z"), berlin);
+    expect(formatDateKey(result, berlin)).toBe("2026-03-23");
+    expect(result.toISOString()).toBe("2026-03-22T23:00:00.000Z");
+  });
 });
 
 // =============================================================================
@@ -569,5 +613,53 @@ describe("URL helpers", () => {
     const d = parseCalendarDate("2025-03-05T15:30:00Z");
     expect(d.getHours()).toBe(0);
     expect(d.getMinutes()).toBe(0);
+  });
+
+  it("parseCalendarDate anchors date-only params at midnight in the requested timezone", () => {
+    const d = parseCalendarDate("2026-03-29", { timeZone: "Europe/Berlin" });
+    expect(d.toISOString()).toBe("2026-03-28T23:00:00.000Z");
+    expect(formatDateKey(d, { timeZone: "Europe/Berlin" })).toBe("2026-03-29");
+  });
+
+  it("buildCalendarUrl writes date keys in the requested timezone", () => {
+    const url = buildCalendarUrl(
+      "/page",
+      { view: "week", date: new Date("2025-03-05T02:30:00Z") },
+      { timeZone: "America/New_York" },
+    );
+    expect(url).toContain("cd=2025-03-04");
+  });
+});
+
+// =============================================================================
+// Timezone-aware calendar views
+// =============================================================================
+
+describe("timezone-aware calendar views", () => {
+  it("getDateRange returns instants for zoned week boundaries across DST", () => {
+    const berlin = { timeZone: "Europe/Berlin" };
+    const range = getDateRange("week", parseCalendarDate("2026-03-29", berlin), berlin);
+    expect(formatDateKey(range.from, berlin)).toBe("2026-03-23");
+    expect(formatDateKey(range.to, berlin)).toBe("2026-03-29");
+    expect(range.from.toISOString()).toBe("2026-03-22T23:00:00.000Z");
+    expect(range.to.toISOString()).toBe("2026-03-29T21:59:59.999Z");
+  });
+
+  it("getMonthGrid emits dates readable as the requested zoned month", () => {
+    const newYork = { timeZone: "America/New_York" };
+    const grid = getMonthGrid(2025, 2, newYork);
+    const marchDays = grid.flat().filter((day) => formatDateKey(day, newYork).startsWith("2025-03-"));
+    expect(marchDays.length).toBe(31);
+  });
+
+  it("itemOnDate matches event ranges against the requested timezone day", () => {
+    const berlin = { timeZone: "Europe/Berlin" };
+    const item = {
+      startsAt: "2025-03-05T23:30:00Z",
+      endsAt: "2025-03-06T00:30:00Z",
+      deadline: null,
+    };
+    expect(itemOnDate(item, parseCalendarDate("2025-03-06", berlin), berlin)).toBe(true);
+    expect(itemOnDate(item, parseCalendarDate("2025-03-05", berlin), berlin)).toBe(false);
   });
 });

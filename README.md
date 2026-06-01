@@ -6,7 +6,7 @@ Generic TypeScript utility library -- crypto, encoding, dates, files, images, an
 
 ## Design goals
 
-- **Native-first** -- modern browsers ship incredibly powerful APIs (Web Crypto, Intl, CompressionStream, OPFS, ...) but they tend to be verbose and awkward to use directly. This library wraps them into ergonomic, composable functions. As a result the entire package needs only two optional peer dependencies (`lean-qr`, `solid-js`) -- which means smaller bundles, faster installs, better long-term support, and fewer supply-chain risks.
+- **Native-first** -- modern browsers ship incredibly powerful APIs (Web Crypto, Intl, CompressionStream, OPFS, ...) but they tend to be verbose and awkward to use directly. This library wraps them into ergonomic, composable functions, using a small runtime dependency (`dayjs`) only where full IANA timezone calendar math needs it. QR and SolidJS stay behind optional peer dependencies (`lean-qr`, `solid-js`).
 - **Tree-shakeable** -- import only what you need from three entry points
 - **TypeScript-first** -- strict mode, full type inference, no `any`
 
@@ -15,7 +15,7 @@ Generic TypeScript utility library -- crypto, encoding, dates, files, images, an
 ```bash
 bun add @valentinkolb/stdlib
 
-# Install the two optional dependencies
+# Install optional dependencies for QR and SolidJS helpers
 bun add solid-js lean-qr
 ```
 
