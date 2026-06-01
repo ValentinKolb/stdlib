@@ -16,11 +16,33 @@ export type DateContext = {
   locale?: string;
   /** First day of week. Defaults to ISO Monday. */
   weekStartsOn?: 0 | 1;
+  /** Alias for weekStartsOn. Prefer this in app-facing code. */
+  firstDayOfWeek?: 0 | 1;
 };
 
 export type RelativeDateContext = DateContext & {
   /** Base timestamp for relative formatting. Defaults to now. */
   base?: string | Date;
+};
+
+export type DstDisambiguation = "compatible" | "earlier" | "later" | "reject";
+
+export type ZonedDateTimeToInstantOptions = {
+  /**
+   * How to handle ambiguous or nonexistent wall-clock times around DST
+   * transitions. Defaults to "reject" for user input safety.
+   */
+  disambiguation?: DstDisambiguation;
+};
+
+export type ZonedAddOptions = ZonedDateTimeToInstantOptions & {
+  timeZone: string;
+  years?: number;
+  months?: number;
+  weeks?: number;
+  days?: number;
+  hours?: number;
+  minutes?: number;
 };
 
 export type CalendarItemLike = {
@@ -57,9 +79,13 @@ const asDate = (input: string | Date): Date => (typeof input === "string" ? new 
 
 const pad2 = (value: number): string => String(value).padStart(2, "0");
 
+const WALL_CLOCK_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+
 const contextLocale = (context: DateContext | undefined, fallback = "en"): string => context?.locale ?? fallback;
 
 const contextTimeZone = (context: DateContext | undefined, fallback?: string): string | undefined => context?.timeZone ?? fallback;
+
+const firstDayOfWeek = (context: DateContext | undefined): 0 | 1 => context?.firstDayOfWeek ?? context?.weekStartsOn ?? 1;
 
 const zoned = (input: string | Date, context?: DateContext, fallbackTimeZone?: string): dayjs.Dayjs => {
   const zone = contextTimeZone(context, fallbackTimeZone);
@@ -102,7 +128,7 @@ const endOfZonedDay = (input: string | Date, context?: DateContext): Date => {
 
 const weekStart = (input: string | Date, context?: DateContext): dayjs.Dayjs => {
   const d = zoned(input, context);
-  const firstDay = context?.weekStartsOn ?? 1;
+  const firstDay = firstDayOfWeek(context);
   const diff = (d.day() - firstDay + 7) % 7;
   const start = d.subtract(diff, "day");
   return zonedLocalDate(start.year(), start.month(), start.date(), context);
@@ -147,6 +173,169 @@ const sameZonedDay = (a: string | Date, b: string | Date, context?: DateContext,
   const da = zoned(a, context, fallbackTimeZone);
   const db = zoned(b, context, fallbackTimeZone);
   return da.year() === db.year() && da.month() === db.month() && da.date() === db.date();
+};
+
+type WallClockParts = {
+  source: string;
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  millisecond: number;
+  hasSeconds: boolean;
+  hasMilliseconds: boolean;
+};
+
+const parseWallClock = (input: string): WallClockParts => {
+  const match = WALL_CLOCK_RE.exec(input);
+  if (!match) {
+    throw new TypeError(`Expected datetime-local value in YYYY-MM-DDTHH:mm format, got "${input}"`);
+  }
+  const [, y, mo, d, h, mi, s, ms] = match;
+  const parts: WallClockParts = {
+    source: input,
+    year: Number(y),
+    month: Number(mo),
+    day: Number(d),
+    hour: Number(h),
+    minute: Number(mi),
+    second: s === undefined ? 0 : Number(s),
+    millisecond: ms === undefined ? 0 : Number(ms.padEnd(3, "0")),
+    hasSeconds: s !== undefined,
+    hasMilliseconds: ms !== undefined,
+  };
+  if (
+    parts.month < 1 ||
+    parts.month > 12 ||
+    parts.day < 1 ||
+    parts.day > 31 ||
+    parts.hour > 23 ||
+    parts.minute > 59 ||
+    parts.second > 59
+  ) {
+    throw new TypeError(`Invalid datetime-local value "${input}"`);
+  }
+  return parts;
+};
+
+const wallClockKey = (parts: WallClockParts): string =>
+  `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}.${String(parts.millisecond).padStart(3, "0")}`;
+
+const zonedWallClockKey = (instant: Date, timeZone: string): string => {
+  const d = dayjs(instant).tz(timeZone);
+  return `${d.year()}-${pad2(d.month() + 1)}-${pad2(d.date())}T${pad2(d.hour())}:${pad2(d.minute())}:${pad2(d.second())}.${String(d.millisecond()).padStart(3, "0")}`;
+};
+
+const wallClockToNaiveDayjs = (input: string): dayjs.Dayjs => {
+  const parts = parseWallClock(input);
+  return dayjs.utc(
+    Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, parts.millisecond),
+  );
+};
+
+const applyZonedAdd = (input: string, options: ZonedAddOptions): string => {
+  let result = wallClockToNaiveDayjs(input);
+  if (options.years) result = result.add(options.years, "year");
+  if (options.months) result = result.add(options.months, "month");
+  if (options.weeks) result = result.add(options.weeks, "week");
+  if (options.days) result = result.add(options.days, "day");
+  if (options.hours) result = result.add(options.hours, "hour");
+  if (options.minutes) result = result.add(options.minutes, "minute");
+  return result.format("YYYY-MM-DDTHH:mm");
+};
+
+const candidateInstantsForWallClock = (parts: WallClockParts, timeZone: string): Date[] => {
+  const expected = wallClockKey(parts);
+  const naiveUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+    parts.millisecond,
+  );
+  const seen = new Set<number>();
+  const candidates: Date[] = [];
+
+  // Current IANA offsets are quarter-hour aligned. Scanning possible offsets
+  // avoids depending on dayjs' chosen DST disambiguation.
+  for (let offset = -14 * 60; offset <= 14 * 60; offset += 15) {
+    const instantMs = naiveUtc - offset * 60_000;
+    if (seen.has(instantMs)) continue;
+    seen.add(instantMs);
+    const instant = new Date(instantMs);
+    if (zonedWallClockKey(instant, timeZone) === expected) candidates.push(instant);
+  }
+
+  return candidates.sort((a, b) => a.getTime() - b.getTime());
+};
+
+const defaultShiftedInstant = (input: string, timeZone: string): Date =>
+  dayjs.tz(input, timeZone).toDate();
+
+// =============================================================================
+// Timezones
+// =============================================================================
+
+export const isValidTimeZone = (timeZone: string): boolean => {
+  if (!timeZone) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone }).format(new Date(0));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const normalizeTimeZone = (value: string | null | undefined, fallback = "UTC"): string => {
+  if (value && isValidTimeZone(value)) return value;
+  if (isValidTimeZone(fallback)) return fallback;
+  return "UTC";
+};
+
+/**
+ * Convert a timezone-local wall-clock datetime to a UTC ISO instant.
+ *
+ * The input matches native `datetime-local` values (`YYYY-MM-DDTHH:mm`, with
+ * optional seconds/milliseconds). By default the function rejects nonexistent
+ * and ambiguous DST times so user input cannot silently shift.
+ */
+export const zonedDateTimeToInstant = (
+  input: string,
+  timeZone: string,
+  options: ZonedDateTimeToInstantOptions = {},
+): string => {
+  const zone = normalizeTimeZone(timeZone);
+  const disambiguation = options.disambiguation ?? "reject";
+  const parts = parseWallClock(input);
+  const candidates = candidateInstantsForWallClock(parts, zone);
+
+  if (candidates.length === 1) return candidates[0]!.toISOString();
+
+  if (candidates.length > 1) {
+    if (disambiguation === "reject") {
+      throw new RangeError(`Ambiguous datetime-local value "${input}" in timezone "${zone}"`);
+    }
+    const selected = disambiguation === "later" ? candidates[candidates.length - 1]! : candidates[0]!;
+    return selected.toISOString();
+  }
+
+  if (disambiguation === "reject" || disambiguation === "earlier") {
+    throw new RangeError(`Nonexistent datetime-local value "${input}" in timezone "${zone}"`);
+  }
+
+  return defaultShiftedInstant(input, zone).toISOString();
+};
+
+/**
+ * Convert a UTC instant to a `datetime-local` input value in an IANA timezone.
+ */
+export const instantToZonedInput = (input: string | Date, timeZone: string): string => {
+  const d = dayjs(asDate(input)).tz(normalizeTimeZone(timeZone));
+  return `${d.year()}-${pad2(d.month() + 1)}-${pad2(d.date())}T${pad2(d.hour())}:${pad2(d.minute())}`;
 };
 
 // =============================================================================
@@ -299,8 +488,8 @@ export const formatDateShort = (date: Date, context?: DateContext): string => {
   return `${z.date()}.${z.month() + 1}.`;
 };
 
-export const formatDateKey = (date: Date, context?: DateContext): string => {
-  const z = zoned(date, context);
+export const formatDateKey = (input: string | Date, context?: DateContext): string => {
+  const z = zoned(input, context);
   return `${z.year()}-${pad2(z.month() + 1)}-${pad2(z.date())}`;
 };
 
@@ -327,6 +516,10 @@ export const isSameDay = (a: Date, b: Date, context?: DateContext): boolean => s
 // Arithmetic & Navigation
 // =============================================================================
 
+export const startOfDay = (input: string | Date, context?: DateContext): Date => startOfZonedDay(input, context);
+
+export const endOfDay = (input: string | Date, context?: DateContext): Date => endOfZonedDay(input, context);
+
 export const addMonths = (date: Date, n: number, context?: DateContext): Date => {
   if (!context?.timeZone) return new Date(date.getFullYear(), date.getMonth() + n, date.getDate());
   const z = zoned(date, context);
@@ -349,7 +542,15 @@ export const startOfMonth = (date: Date, context?: DateContext): Date => {
 
 export const startOfWeek = (date: Date, context?: DateContext): Date => weekStart(date, context).toDate();
 
-export const today = (context?: DateContext): Date => startOfZonedDay(new Date(), context);
+export const today = (context?: DateContext): Date => startOfDay(new Date(), context);
+
+export const addZoned = (input: string, options: ZonedAddOptions): string => applyZonedAdd(input, options);
+
+export const addZonedInstant = (input: string | Date, options: ZonedAddOptions): string => {
+  const wallClock = instantToZonedInput(input, options.timeZone);
+  const next = addZoned(wallClock, options);
+  return zonedDateTimeToInstant(next, options.timeZone, { disambiguation: options.disambiguation });
+};
 
 // =============================================================================
 // Calendar Views
@@ -481,6 +682,11 @@ export const parseCalendarDate = (param: string | undefined, context?: DateConte
 // =============================================================================
 
 export const dates = {
+  // Timezones
+  isValidTimeZone,
+  normalizeTimeZone,
+  zonedDateTimeToInstant,
+  instantToZonedInput,
   // Formatting
   formatDate,
   formatDateTime,
@@ -501,12 +707,16 @@ export const dates = {
   isSameMonth,
   isSameDay,
   // Arithmetic
+  startOfDay,
+  endOfDay,
   addMonths,
   addWeeks,
   addDays,
   startOfMonth,
   startOfWeek,
   today,
+  addZoned,
+  addZonedInstant,
   // Calendar views
   getMonthGrid,
   getWeekDays,

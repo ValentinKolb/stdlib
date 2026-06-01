@@ -139,6 +139,24 @@ dates.isSameDay(a, b, { timeZone: "Asia/Tokyo" });
 
 Existing calls keep their current defaults: exact date/time formatters default to UTC; calendar helpers default to the runtime-local timezone.
 
+Cloud apps should store UTC instants and convert only at the UI boundary:
+
+```ts
+const timeZone = dates.normalizeTimeZone(app.timeZone, "UTC");
+
+// Render/edit
+const inputValue = dates.instantToZonedInput(event.startsAt, timeZone);
+
+// Save native datetime-local input back to UTC
+const startsAt = dates.zonedDateTimeToInstant(form.startsAt, timeZone);
+
+// Recurrence: keep Monday 09:00 in the event timezone across DST
+const nextStartsAt = dates.addZonedInstant(event.startsAt, {
+  timeZone,
+  weeks: 1,
+});
+```
+
 ---
 
 ## 5. Calendar Integration

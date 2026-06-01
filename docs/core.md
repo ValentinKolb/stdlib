@@ -124,6 +124,7 @@ type DateContext = {
   timeZone?: string;      // e.g. "Europe/Berlin", "America/New_York"
   locale?: string;        // e.g. "en", "de", "fr"
   weekStartsOn?: 0 | 1;   // Sunday or Monday, default Monday
+  firstDayOfWeek?: 0 | 1; // Alias for weekStartsOn
 };
 ```
 
@@ -140,6 +141,16 @@ dates.formatDateTimeRelative(new Date());           // "just now"
 dates.formatDateRelative(new Date());               // "14:30"
 dates.formatTimeSpan("2025-03-10T00:00:00Z");       // "in 3 days"
 dates.formatDuration("2025-03-01", "2025-03-03");   // "2 days"
+
+// Cloud edit flow: store UTC, render/edit in the app timezone
+const input = dates.instantToZonedInput(event.startsAt, app.timeZone);
+const startsAt = dates.zonedDateTimeToInstant(input, app.timeZone);
+
+// Recurrence: preserve local wall-clock time across DST
+const nextStartsAt = dates.addZonedInstant(event.startsAt, {
+  timeZone: event.timeZone,
+  weeks: 1,
+});
 ```
 
 ## dates (calendar views)

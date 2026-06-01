@@ -10,6 +10,10 @@ import {
 } from "./dates";
 
 const {
+  isValidTimeZone,
+  normalizeTimeZone,
+  zonedDateTimeToInstant,
+  instantToZonedInput,
   getMonthGrid,
   getWeekDays,
   getDateRange,
@@ -27,8 +31,12 @@ const {
   addMonths,
   addWeeks,
   addDays,
+  startOfDay,
+  endOfDay,
   startOfMonth,
   startOfWeek,
+  addZoned,
+  addZonedInstant,
   buildCalendarUrl,
   parseCalendarDate,
   today,
@@ -46,6 +54,58 @@ const localDate = (s: string): Date => {
   const [y, m, d] = s.split("-").map(Number) as [number, number, number];
   return new Date(y, m - 1, d);
 };
+
+// =============================================================================
+// Timezone helpers
+// =============================================================================
+
+describe("timezone helpers", () => {
+  it("validates IANA timezone names", () => {
+    expect(isValidTimeZone("Europe/Berlin")).toBe(true);
+    expect(isValidTimeZone("America/New_York")).toBe(true);
+    expect(isValidTimeZone("Berlin")).toBe(false);
+    expect(isValidTimeZone("")).toBe(false);
+  });
+
+  it("normalizes invalid timezone values to a fallback", () => {
+    expect(normalizeTimeZone("Europe/Berlin", "UTC")).toBe("Europe/Berlin");
+    expect(normalizeTimeZone("Berlin", "America/New_York")).toBe("America/New_York");
+    expect(normalizeTimeZone(null, "Not/AZone")).toBe("UTC");
+  });
+
+  it("converts timezone-local datetime-local values to UTC instants", () => {
+    expect(zonedDateTimeToInstant("2026-06-01T09:00", "Europe/Berlin")).toBe("2026-06-01T07:00:00.000Z");
+  });
+
+  it("rejects nonexistent DST wall-clock values by default", () => {
+    expect(() => zonedDateTimeToInstant("2026-03-29T02:30", "Europe/Berlin")).toThrow(RangeError);
+  });
+
+  it("can shift nonexistent DST wall-clock values with compatible disambiguation", () => {
+    expect(
+      zonedDateTimeToInstant("2026-03-29T02:30", "Europe/Berlin", {
+        disambiguation: "compatible",
+      }),
+    ).toBe("2026-03-29T01:30:00.000Z");
+  });
+
+  it("rejects ambiguous DST wall-clock values by default", () => {
+    expect(() => zonedDateTimeToInstant("2026-10-25T02:30", "Europe/Berlin")).toThrow(RangeError);
+  });
+
+  it("can disambiguate repeated DST wall-clock values", () => {
+    expect(zonedDateTimeToInstant("2026-10-25T02:30", "Europe/Berlin", { disambiguation: "earlier" })).toBe(
+      "2026-10-25T00:30:00.000Z",
+    );
+    expect(zonedDateTimeToInstant("2026-10-25T02:30", "Europe/Berlin", { disambiguation: "later" })).toBe(
+      "2026-10-25T01:30:00.000Z",
+    );
+  });
+
+  it("converts UTC instants to datetime-local values in a timezone", () => {
+    expect(instantToZonedInput("2026-06-01T07:00:00.000Z", "Europe/Berlin")).toBe("2026-06-01T09:00");
+  });
+});
 
 // =============================================================================
 // Pure formatters (no mocking needed)
@@ -553,11 +613,32 @@ describe("navigation", () => {
     expect(next.toISOString()).toBe("2026-03-29T22:00:00.000Z");
   });
 
+  it("startOfDay and endOfDay return zoned day boundary instants", () => {
+    const berlin = { timeZone: "Europe/Berlin" };
+    expect(startOfDay("2026-03-29T12:00:00Z", berlin).toISOString()).toBe("2026-03-28T23:00:00.000Z");
+    expect(endOfDay("2026-03-29T12:00:00Z", berlin).toISOString()).toBe("2026-03-29T21:59:59.999Z");
+  });
+
   it("startOfWeek returns the zoned Monday instant", () => {
     const berlin = { timeZone: "Europe/Berlin" };
     const result = startOfWeek(new Date("2026-03-29T12:00:00Z"), berlin);
     expect(formatDateKey(result, berlin)).toBe("2026-03-23");
     expect(result.toISOString()).toBe("2026-03-22T23:00:00.000Z");
+  });
+
+  it("supports firstDayOfWeek as an alias for weekStartsOn", () => {
+    const days = getWeekDays(localDate("2025-03-05"), { firstDayOfWeek: 0 });
+    expect(days[0]!.getDay()).toBe(0);
+  });
+
+  it("adds zoned wall-clock recurrence intervals across DST", () => {
+    expect(addZoned("2026-03-23T09:00", { timeZone: "Europe/Berlin", weeks: 1 })).toBe("2026-03-30T09:00");
+  });
+
+  it("adds zoned instant recurrence intervals while preserving wall-clock time", () => {
+    expect(addZonedInstant("2026-03-23T08:00:00.000Z", { timeZone: "Europe/Berlin", weeks: 1 })).toBe(
+      "2026-03-30T07:00:00.000Z",
+    );
   });
 });
 

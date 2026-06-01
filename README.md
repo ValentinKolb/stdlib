@@ -65,8 +65,13 @@ const userCache = cache.create<User>({
 
 const user = await userCache.get("user:123");
 if (user) {
-  console.log(`Last seen: ${dates.formatDateRelative(user.lastSeen)}`);
+  const timeZone = dates.normalizeTimeZone(user.timeZone, "UTC");
+  console.log(`Last seen: ${dates.formatDateRelative(user.lastSeen, { timeZone })}`);
 }
+
+// Edit stored UTC instants in a user's timezone
+const startsAtInput = dates.instantToZonedInput(event.startsAt, user.timeZone);
+const startsAt = dates.zonedDateTimeToInstant(startsAtInput, user.timeZone);
 
 // Sync filters to URL
 const query = searchParams.serialize({ page: 1, active: true });

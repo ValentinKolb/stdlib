@@ -297,8 +297,13 @@ type DateContext = {
   timeZone?: string;      // IANA, e.g. "Europe/Berlin"
   locale?: string;        // BCP 47, e.g. "de"
   weekStartsOn?: 0 | 1;   // Sunday or Monday, default Monday
+  firstDayOfWeek?: 0 | 1; // Alias for weekStartsOn
 };
 
+dates.isValidTimeZone(timeZone: string): boolean
+dates.normalizeTimeZone(value: string | null | undefined, fallback?: string): string
+dates.zonedDateTimeToInstant(input: string, timeZone: string, options?: { disambiguation?: "compatible" | "earlier" | "later" | "reject" }): string
+dates.instantToZonedInput(input: string | Date, timeZone: string): string       // "YYYY-MM-DDTHH:mm"
 dates.formatDate(input: string | Date, ctx?: DateContext): string              // "05 Mar 2025"
 dates.formatDateTime(input: string | Date, ctx?: DateContext): string          // "05 Mar 2025, 13:53"
 dates.formatDateTimeRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
@@ -318,6 +323,16 @@ dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" }); // 
 dates.formatDateTimeRelative(new Date());            // "just now"
 dates.formatDateRelative(new Date());                // "14:30" (UTC default)
 dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day 3 hours"
+
+// Cloud apps: store UTC instants, edit in the app timezone
+const inputValue = dates.instantToZonedInput(event.startsAt, app.timeZone);
+const startsAt = dates.zonedDateTimeToInstant(inputValue, app.timeZone);
+
+// Recurring calendar events: keep "09:00 Europe/Berlin" at 09:00 across DST
+const nextStartsAt = dates.addZonedInstant(event.startsAt, {
+  timeZone: event.timeZone,
+  weeks: 1,
+});
 ```
 
 ### Relative time buckets (formatDateTimeRelative)
@@ -368,16 +383,20 @@ dates.formatWeekdayShort(date: Date, localeOrCtx?: string | DateContext): string
 dates.formatWeekdayLong(date: Date, localeOrCtx?: string | DateContext): string
 dates.formatFullDate(date: Date, localeOrCtx?: string | DateContext): string
 dates.formatDateShort(date: Date, ctx?: DateContext): string
-dates.formatDateKey(date: Date, ctx?: DateContext): string                     // "2025-03-09"
+dates.formatDateKey(input: string | Date, ctx?: DateContext): string           // "2025-03-09"
 dates.formatTime(input: string | Date, ctx?: DateContext): string              // "14:30"
 
 // Navigation
+dates.startOfDay(input: string | Date, ctx?: DateContext): Date
+dates.endOfDay(input: string | Date, ctx?: DateContext): Date
 dates.addMonths(date: Date, n: number, ctx?: DateContext): Date
 dates.addWeeks(date: Date, n: number, ctx?: DateContext): Date
 dates.addDays(date: Date, n: number, ctx?: DateContext): Date
 dates.startOfMonth(date: Date, ctx?: DateContext): Date
 dates.startOfWeek(date: Date, ctx?: DateContext): Date                         // Monday by default
 dates.today(ctx?: DateContext): Date                                           // start of current day
+dates.addZoned(input: string, options: { timeZone: string; days?: number; weeks?: number; months?: number; years?: number }): string
+dates.addZonedInstant(input: string | Date, options: { timeZone: string; days?: number; weeks?: number; months?: number; years?: number }): string
 
 // Dynamic locale-aware constants
 dates.weekdays(localeOrCtx?: string | DateContext): string[]  // ["Mon","Tue",...]
@@ -416,6 +435,7 @@ dates.formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "America/New_Y
 - `getMonthGrid` includes padding days from adjacent months.
 - Date values are still instants. `timeZone` controls how those instants are read as civil calendar days.
 - Calendar ranges return Date instants for the start/end of the zoned civil range.
+- `zonedDateTimeToInstant` rejects nonexistent/ambiguous DST wall-clock values by default; pass `disambiguation` only when shifting or choosing an occurrence is intentional.
 - Formatting uses native `Intl.DateTimeFormat`; timezone arithmetic uses dayjs `utc` + `timezone`.
 
 ---
