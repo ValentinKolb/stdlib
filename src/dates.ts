@@ -280,21 +280,21 @@ const defaultShiftedInstant = (input: string, timeZone: string): Date =>
 // Timezones
 // =============================================================================
 
-export const isValidTimeZone = (timeZone: string): boolean => {
-  if (!timeZone) return false;
+const validTimeZoneOrNull = (value: string | null | undefined): string | null => {
+  const timeZone = typeof value === "string" ? value.trim() : "";
   try {
-    new Intl.DateTimeFormat("en", { timeZone }).format(new Date(0));
-    return true;
+    if (!timeZone) return null;
+    new Intl.DateTimeFormat(undefined, { timeZone }).format(new Date(0));
+    return timeZone;
   } catch {
-    return false;
+    return null;
   }
 };
 
-export const normalizeTimeZone = (value: string | null | undefined, fallback = "UTC"): string => {
-  if (value && isValidTimeZone(value)) return value;
-  if (isValidTimeZone(fallback)) return fallback;
-  return "UTC";
-};
+export const isValidTimeZone = (value: string | null | undefined): boolean => validTimeZoneOrNull(value) !== null;
+
+export const normalizeTimeZone = (value: string | null | undefined, fallback: string | null | undefined = "UTC"): string =>
+  validTimeZoneOrNull(value) ?? validTimeZoneOrNull(fallback) ?? "UTC";
 
 /**
  * Convert a timezone-local wall-clock datetime to a UTC ISO instant.

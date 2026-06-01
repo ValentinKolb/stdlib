@@ -8,6 +8,11 @@ import {
   formatTimeSpan,
   formatDuration,
 } from "./dates";
+import {
+  dates as rootDates,
+  isValidTimeZone as rootIsValidTimeZone,
+  normalizeTimeZone as rootNormalizeTimeZone,
+} from "./index";
 
 const {
   isValidTimeZone,
@@ -63,14 +68,27 @@ describe("timezone helpers", () => {
   it("validates IANA timezone names", () => {
     expect(isValidTimeZone("Europe/Berlin")).toBe(true);
     expect(isValidTimeZone("America/New_York")).toBe(true);
+    expect(isValidTimeZone(" UTC ")).toBe(true);
     expect(isValidTimeZone("Berlin")).toBe(false);
     expect(isValidTimeZone("")).toBe(false);
+    expect(isValidTimeZone(undefined)).toBe(false);
   });
 
   it("normalizes invalid timezone values to a fallback", () => {
     expect(normalizeTimeZone("Europe/Berlin", "UTC")).toBe("Europe/Berlin");
+    expect(normalizeTimeZone(" Europe/Berlin ")).toBe("Europe/Berlin");
     expect(normalizeTimeZone("Berlin", "America/New_York")).toBe("America/New_York");
+    expect(normalizeTimeZone(undefined, " Europe/Berlin ")).toBe("Europe/Berlin");
+    expect(normalizeTimeZone("", "UTC")).toBe("UTC");
+    expect(normalizeTimeZone("   ", "UTC")).toBe("UTC");
     expect(normalizeTimeZone(null, "Not/AZone")).toBe("UTC");
+  });
+
+  it("exports timezone normalization as named root exports and in the dates namespace", () => {
+    expect(rootNormalizeTimeZone(" Europe/Berlin ")).toBe("Europe/Berlin");
+    expect(rootIsValidTimeZone("UTC")).toBe(true);
+    expect(rootDates.normalizeTimeZone("nope", "America/New_York")).toBe("America/New_York");
+    expect(rootDates.isValidTimeZone("nope")).toBe(false);
   });
 
   it("converts timezone-local datetime-local values to UTC instants", () => {
