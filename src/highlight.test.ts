@@ -1,0 +1,214 @@
+import { describe, expect, it } from "bun:test";
+import { highlight } from "./highlight";
+
+const count = (text: string, needle: string): number =>
+  text.split(needle).length - 1;
+
+// =====================================================================
+// highlight.escape
+// =====================================================================
+
+describe("highlight.escape", () => {
+  it("escapes HTML-special characters", () => {
+    expect(highlight.escape(`<script a="b">'x' & y</script>`)).toBe(
+      "&lt;script a=&quot;b&quot;&gt;&#39;x&#39; &amp; y&lt;/script&gt;",
+    );
+  });
+});
+
+// =====================================================================
+// highlight.compile
+// =====================================================================
+
+describe("highlight.compile", () => {
+  const renderFormula = highlight.compile(
+    [
+      { kind: "comment", match: /#.*/ },
+      { kind: "string", match: /"(?:\\.|[^"])*"/ },
+      { kind: "variable", match: /\$[a-zA-Z_]\w*/ },
+      { kind: "keyword", match: /\b(?:IF|THEN|ELSE|SUM)\b/ },
+      { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
+      { kind: "operator", match: /[+\-*/=<>!]+/ },
+    ],
+    { classPrefix: "dsl-" },
+  );
+
+  it("renders caller-defined DSL tokens", () => {
+    expect(renderFormula(`IF $price > 10 THEN "ok"`)).toBe(
+      `<span class="dsl-keyword">IF</span> <span class="dsl-variable">$price</span> <span class="dsl-operator">&gt;</span> <span class="dsl-number">10</span> <span class="dsl-keyword">THEN</span> <span class="dsl-string">&quot;ok&quot;</span>`,
+    );
+  });
+
+  it("uses rule order as priority", () => {
+    expect(renderFormula("# IF $price")).toBe(
+      `<span class="dsl-comment"># IF $price</span>`,
+    );
+  });
+
+  it("escapes unmatched text and token text", () => {
+    expect(renderFormula(`IF "<x>"`)).toBe(
+      `<span class="dsl-keyword">IF</span> <span class="dsl-string">&quot;&lt;x&gt;&quot;</span>`,
+    );
+  });
+
+  it("sanitises token class names", () => {
+    const render = highlight.compile([{ kind: `bad" token`, match: /x/ }]);
+    expect(render("x")).toBe(`<span class="hl-bad--token">x</span>`);
+  });
+
+  it("ignores zero-length rule matches", () => {
+    const render = highlight.compile([
+      { kind: "empty", match: /(?:)/ },
+      { kind: "word", match: /ok/ },
+    ]);
+    expect(render("ok")).toBe(`<span class="hl-word">ok</span>`);
+  });
+
+  it("is reusable across repeated renders", () => {
+    const start = performance.now();
+    for (let i = 0; i < 1000; i++) {
+      renderFormula(`IF $price > ${i} THEN "ok" # comment`);
+    }
+    expect(performance.now() - start).toBeLessThan(150);
+  });
+});
+
+// =====================================================================
+// highlight.overlay
+// =====================================================================
+
+describe("highlight.overlay", () => {
+  it("injects an escaped ghost with the Cloud anchor attribute", () => {
+    const html = highlight.overlay("hel", highlight.escape, {
+      ghost: { at: 3, text: `<lo>` },
+    });
+
+    expect(html).toBe(
+      `hel<span class="completion-ghost" data-completion-anchor>&lt;lo&gt;<span class="completion-ghost-arrow" aria-hidden="true">→</span></span>`,
+    );
+  });
+
+  it("injects an invisible caret anchor", () => {
+    const html = highlight.overlay("hello", highlight.escape, {
+      anchor: { at: 2 },
+    });
+
+    expect(html).toContain(`he<span class="completion-caret-anchor"`);
+    expect(html).toContain(`data-completion-anchor`);
+    expect(html).toContain(`aria-hidden="true"`);
+  });
+
+  it("lets the caller highlighter process text before sentinel replacement", () => {
+    const html = highlight.overlay("**hi**", highlight.markdown, {
+      ghost: { at: 6, text: "!" },
+    });
+
+    expect(html).toContain(`class="md-bold"`);
+    expect(html).toContain(`class="completion-ghost"`);
+  });
+});
+
+// =====================================================================
+// highlight.markdown
+// =====================================================================
+
+describe("highlight.markdown", () => {
+  it("escapes raw HTML before markdown processing", () => {
+    expect(highlight.markdown(`<b>"x"</b>`)).toBe(
+      "&lt;b&gt;&quot;x&quot;&lt;/b&gt;",
+    );
+  });
+
+  it("renders inline code as a protected zone", () => {
+    expect(highlight.markdown("Use `*x*` now")).toBe(
+      `Use <span class="md-code"><span class="md-syntax">\`</span>*x*<span class="md-syntax">\`</span></span> now`,
+    );
+  });
+
+  it("renders links without creating anchors", () => {
+    expect(highlight.markdown("[Docs](https://example.test?a=1&b=2)")).toBe(
+      `<span class="md-link"><span class="md-syntax">[</span>Docs<span class="md-syntax">](https://example.test?a=1&amp;b=2)</span></span>`,
+    );
+  });
+
+  it("renders bold and nested italic", () => {
+    const html = highlight.markdown("**foo *bar* baz**");
+    expect(html).toContain(`class="md-bold"`);
+    expect(html).toContain(`class="md-italic"`);
+    expect(html).toContain(`<span class="md-syntax">**</span>`);
+    expect(html).toContain(`<span class="md-syntax">*</span>bar`);
+  });
+
+  it("renders block-level markdown markers", () => {
+    const html = highlight.markdown("# Title\n> Quote\n- Item\n1. One\n---");
+    expect(html).toContain(`class="md-h1"`);
+    expect(html).toContain(`class="md-quote"`);
+    expect(html).toContain(`<span class="md-marker">- </span>Item`);
+    expect(html).toContain(`<span class="md-marker">1. </span>One`);
+    expect(html).toContain(`class="md-hr"`);
+  });
+
+  it("keeps fenced code blocks verbatim", () => {
+    const html = highlight.markdown("```\n**not bold**\n```");
+    expect(count(html, `md-code-block`)).toBe(3);
+    expect(html).not.toContain(`class="md-bold"`);
+  });
+
+  it("highlights known labels outside code zones only", () => {
+    const html = highlight.markdown("#alice `#alice`\n```\n#alice\n```", {
+      knownLabels: new Set(["#alice"]),
+    });
+
+    expect(count(html, `class="md-completion-match"`)).toBe(1);
+  });
+
+  it("matches known labels as standalone words", () => {
+    const html = highlight.markdown("hello #alice and #alice2", {
+      knownLabels: new Set(["#alice"]),
+    });
+
+    expect(count(html, `class="md-completion-match"`)).toBe(1);
+  });
+
+  it("adds textarea trailing-newline compensation", () => {
+    expect(highlight.markdown("line\n")).toBe("line\n\n");
+  });
+});
+
+// =====================================================================
+// highlight.presets
+// =====================================================================
+
+describe("highlight.presets", () => {
+  it("provides a shallow code highlighter", () => {
+    const html = highlight.presets.code(`const x = "if"; // if`);
+    expect(html).toContain(`<span class="hl-keyword">const</span>`);
+    expect(html).toContain(`<span class="hl-string">&quot;if&quot;</span>`);
+    expect(html).toContain(`<span class="hl-comment">// if</span>`);
+  });
+
+  it("provides a shallow shell highlighter", () => {
+    const html = highlight.presets.shell(`if [ "$USER" ]; then # hi`);
+    expect(html).toContain(`<span class="hl-keyword">if</span>`);
+    expect(html).toContain(`<span class="hl-string">&quot;$USER&quot;</span>`);
+    expect(html).toContain(`<span class="hl-keyword">then</span>`);
+    expect(html).toContain(`<span class="hl-comment"># hi</span>`);
+  });
+});
+
+// =====================================================================
+// namespace export
+// =====================================================================
+
+describe("highlight namespace", () => {
+  it("exposes the KISS API surface", () => {
+    expect(Object.keys(highlight).sort()).toEqual([
+      "compile",
+      "escape",
+      "markdown",
+      "overlay",
+      "presets",
+    ]);
+    expect(Object.keys(highlight.presets).sort()).toEqual(["code", "shell"]);
+  });
+});

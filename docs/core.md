@@ -1,7 +1,7 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, charts, searchParams, cache } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, highlight, charts, searchParams, cache } from "@valentinkolb/stdlib";
 import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
@@ -406,6 +406,48 @@ The `match` algorithm uses a fzf-inspired scoring heuristic that rewards
 prefix matches, word boundaries (kebab/snake/space/dot/camelCase), contiguous
 runs, and case agreement. Score values are raw and only comparable within a
 single query — use them for sorting, not for cross-query thresholds.
+
+## highlight
+
+Headless string-to-HTML highlighting for textarea overlays, markdown previews,
+and small domain-specific languages. It emits escaped HTML with semantic class
+names only; it does not include CSS, themes, colors, DOM code, or external
+parser dependencies.
+
+```ts
+import { highlight } from "@valentinkolb/stdlib";
+
+highlight.escape(`<b>"x"</b>`); // "&lt;b&gt;&quot;x&quot;&lt;/b&gt;"
+
+highlight.markdown("**Ship** `v1`", {
+  knownLabels: new Set(["#roadmap", "@team"]),
+});
+// Cloud-compatible markdown classes such as md-bold, md-code, md-syntax.
+
+highlight.overlay("**Ship**", highlight.markdown, {
+  ghost: { at: 8, text: " it" },
+});
+// Injects completion-ghost/data-completion-anchor after markdown rendering.
+
+const renderFormula = highlight.compile([
+  { kind: "comment", match: /#.*/ },
+  { kind: "string", match: /"(?:\\.|[^"])*"/ },
+  { kind: "variable", match: /\$[a-zA-Z_]\w*/ },
+  { kind: "keyword", match: /\b(IF|THEN|ELSE|SUM)\b/ },
+  { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
+  { kind: "operator", match: /[+\-*/=<>!]+/ },
+]);
+
+renderFormula(`IF $price > 10 THEN "ok"`);
+
+highlight.presets.shell(`if [ "$USER" ]; then # hi`);
+highlight.presets.code(`const x = "ok"; // hi`);
+```
+
+`highlight.compile` returns a reusable highlighter. Create it once and call the
+returned function during editor input events. Rule order is priority: at each
+cursor position the first matching rule wins, so put comments and strings
+before keywords.
 
 ## charts
 

@@ -7,8 +7,9 @@ description: >
   TypeScript utility. Trigger broadly: any mention of hashing, encryption, QR
   codes, file downloads, image processing, drag-and-drop, hotkeys, clipboard,
   cookies, localStorage, notifications, search params, timing, text formatting,
-  calendars, gradients, file icons, SVG avatars, result types, or password
-  generation should activate this skill.
+  syntax highlighting, markdown editor overlays, domain-specific language
+  highlighting, calendars, gradients, file icons, SVG avatars, result types, or
+  password generation should activate this skill.
 ---
 
 # @valentinkolb/stdlib -- Overview & Module Picker
@@ -24,7 +25,7 @@ sub-paths.
 
 | Import path | Runtime | Modules |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `fileicons`, `gradients`, `result`, `svg`, `timing`, `streaming`, `text`, `fuzzy`, `charts`, `searchParams`, `cache` |
+| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `fileicons`, `gradients`, `result`, `svg`, `timing`, `streaming`, `text`, `fuzzy`, `highlight`, `charts`, `searchParams`, `cache` |
 | `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr` peer) | `qr` -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore`, `theme` |
 | `@valentinkolb/stdlib/solid` | SolidJS components | `mutation`, `timed`, `hotkeys`, `dnd`, `detailPanel`, `localStore`, `clipboard`, `clickOutside`, `dropzone`, `a11y` |
@@ -95,6 +96,9 @@ sub-paths.
 | Pretty-print byte sizes (IEC/SI, locale-aware, value/unit split) | `text.pprintBytes`, `text.pprintBytesParts` | core |
 | Fuzzy-match a query against a string (UI search, command palette) | `fuzzy.match`, `fuzzy.filter`, `fuzzy.segments` | core |
 | Find the closest typo correction in a list of choices | `fuzzy.distance`, `fuzzy.closest` | core |
+| Render safe headless markdown/editor highlight HTML | `highlight.markdown`, `highlight.overlay` | core |
+| Build a reusable highlighter for a formula, command, query, or DSL | `highlight.compile` | core |
+| Highlight shallow shell or code snippets without parser dependencies | `highlight.presets.shell`, `highlight.presets.code` | core |
 | Generate SVG charts (scatter, line, bar, pie, donut, histogram, box plot) with titles, references, legends, error bars, log scale, trend lines | `charts.scatter/line/bar/pie/donut/histogram/boxplot` | core |
 | Generate a minimalist inline sparkline (with optional smooth, min/max, last-point dots) | `charts.sparkline` | core |
 | Get a file icon/category | `fileicons.getFileCategory/getFileIcon` | core |
@@ -178,7 +182,7 @@ sub-paths.
 
 For full API documentation on each entry point, read the specific skill:
 
-- **`stdlib-core`** -- encoding, crypto, password, result, dates, qr, svg, text, timing, streaming, cache, searchParams, fileicons, gradients
+- **`stdlib-core`** -- encoding, crypto, password, result, dates, qr, svg, text, fuzzy, highlight, timing, streaming, cache, searchParams, fileicons, gradients
 - **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore, theme
 - **`stdlib-solid`** -- localStore, mutation, dnd, hotkeys, dropzone, clickOutside, clipboard, detailPanel, timed, a11y
 

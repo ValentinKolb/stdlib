@@ -10,7 +10,8 @@ description: >
   (sleep, buffer, jitter, random, shuffle, withMinLoadTime, debounce, throttle),
   streaming (SSE parsing, NDJSON parsing), text manipulation
   (slugify, humanize, titleify, pprintBytes, truncate, summarize, camelCase,
-  snakeCase, kebabCase, pascalCase), in-memory TTL caching with lazy
+  snakeCase, kebabCase, pascalCase), fuzzy matching, headless syntax
+  highlighting for markdown/editor overlays/custom DSLs, in-memory TTL caching with lazy
   loading, Result/ServiceError types for service layer error handling, QR code
   generation (WiFi, email, tel, vCard, calendar events, SVG rendering),
   SVG avatar generation, WebP data URL parsing, URL search parameter
@@ -24,7 +25,7 @@ description: >
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, charts, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
+import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, highlight, charts, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
 import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
@@ -725,6 +726,94 @@ fuzzy.closest("hellp", ["hello", "help"]);
 - `fuzzy.distance` is case-sensitive (lowercase manually for case-insensitive distance). `fuzzy.closest` is case-insensitive by default but preserves the original casing in the returned `value`.
 - The match algorithm is 2D dynamic programming — optimal, not greedy. Worst case O(Q·T) per match; subsequence pre-check rejects non-matches in O(T) before the DP runs. Suitable for live filtering of 10k+ items.
 - `fuzzy.segments` expects sorted, non-overlapping ranges (the canonical shape produced by `match`/`filter`). Pass other shapes at your own risk.
+
+---
+
+## highlight
+
+Headless string-to-HTML highlighting for textarea overlays, markdown previews,
+and small domain-specific languages. It returns escaped HTML with semantic class
+names only: no CSS, no themes, no colors, no DOM helpers, and no external parser
+dependencies.
+
+### API
+
+```ts
+type Highlighter = (text: string) => string;
+
+type HighlightRule = {
+  kind: string;  // rendered as `${classPrefix}${kind}` after class-name sanitising
+  match: RegExp; // matched at the current cursor position
+};
+
+highlight.escape(text: string): string
+
+highlight.markdown(text: string, options?: {
+  knownLabels?: ReadonlySet<string>; // wraps standalone labels in md-completion-match
+}): string
+
+highlight.overlay(
+  text: string,
+  render: (text: string) => string,
+  options?: {
+    ghost?: { at: number; text: string };
+    anchor?: { at: number };
+  },
+): string
+
+highlight.compile(
+  rules: readonly HighlightRule[],
+  options?: { classPrefix?: string }, // default "hl-"
+): Highlighter
+
+highlight.presets.shell(text: string): string
+highlight.presets.code(text: string): string
+```
+
+### Examples
+
+```ts
+import { highlight } from "@valentinkolb/stdlib";
+
+// Safe escaped HTML for raw text.
+highlight.escape(`<b>"x"</b>`);
+// "&lt;b&gt;&quot;x&quot;&lt;/b&gt;"
+
+// Cloud-compatible markdown preview for textarea overlays.
+highlight.markdown("**Ship** `v1` and ping #roadmap", {
+  knownLabels: new Set(["#roadmap"]),
+});
+// Uses md-* classes such as md-bold, md-code, md-syntax, md-completion-match.
+
+// Completion overlay. The sentinel is injected before markdown rendering,
+// then replaced with a completion ghost or caret anchor.
+highlight.overlay("**Ship**", highlight.markdown, {
+  ghost: { at: 8, text: " it" },
+});
+
+// Domain-specific language highlighter. Compile once, reuse per input event.
+const renderFormula = highlight.compile([
+  { kind: "comment", match: /#.*/ },
+  { kind: "string", match: /"(?:\\.|[^"])*"/ },
+  { kind: "variable", match: /\$[a-zA-Z_]\w*/ },
+  { kind: "keyword", match: /\b(IF|THEN|ELSE|SUM)\b/ },
+  { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
+  { kind: "operator", match: /[+\-*/=<>!]+/ },
+]);
+
+renderFormula(`IF $price > 10 THEN "ok" # comment`);
+
+// Shallow dependency-free presets.
+highlight.presets.shell(`if [ "$USER" ]; then # hi`);
+highlight.presets.code(`const x = "ok"; // hi`);
+```
+
+**Gotchas:**
+- `highlight.markdown` is a Cloud-compatible editor highlighter, not a full Markdown renderer. It keeps syntax characters visible for textarea overlay alignment.
+- `highlight.compile` is intentionally shallow. It does ordered regex token wrapping, not AST parsing.
+- Rule order is priority. Put broad protected constructs such as comments and strings before keywords.
+- Compile custom highlighters once and reuse the returned function during editor input renders.
+- All raw input is HTML-escaped before wrapping, so the returned string is safe to use with `innerHTML` when the rules are trusted code.
 
 ---
 

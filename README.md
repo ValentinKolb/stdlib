@@ -1,6 +1,6 @@
 # @valentinkolb/stdlib
 
-Generic TypeScript utility library -- crypto, encoding, dates, files, images, and SolidJS primitives.
+Generic TypeScript utility library -- crypto, encoding, dates, display helpers, files, images, and SolidJS primitives.
 
 **Why?** I kept reimplementing the same micro-utilities across [my projects](https://github.com/ValentinKolb). This package consolidates them in one place with consistent APIs, thorough tests, and minimal dependencies.
 
@@ -23,7 +23,7 @@ bun add solid-js lean-qr
 
 | Import | Environment | What's inside |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
+| `@valentinkolb/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
 | `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@valentinkolb/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
 | `@valentinkolb/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
@@ -105,6 +105,32 @@ fuzzy.closest("primry", ["primary", "secondary", "tertiary"]);
 // { value: "primary", distance: 1, similarity: 0.86 }
 ```
 
+### Headless Syntax Highlighting
+
+```typescript
+import { highlight } from "@valentinkolb/stdlib";
+
+// Markdown preview for textarea overlays. Returns escaped HTML with semantic classes.
+preview.innerHTML = highlight.markdown(markdownText, {
+  knownLabels: new Set(["#roadmap", "@team"]),
+});
+
+// Completion overlay: injects a ghost or caret anchor before the highlighter runs.
+preview.innerHTML = highlight.overlay(markdownText, highlight.markdown, {
+  ghost: { at: cursorOffset, text: "uggestion" },
+});
+
+// Domain-specific languages: compile once, reuse on every input event.
+const renderFormula = highlight.compile([
+  { kind: "comment", match: /#.*/ },
+  { kind: "string", match: /"(?:\\.|[^"])*"/ },
+  { kind: "variable", match: /\$[a-zA-Z_]\w*/ },
+  { kind: "keyword", match: /\b(IF|THEN|ELSE|SUM)\b/ },
+  { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
+  { kind: "operator", match: /[+\-*/=<>!]+/ },
+]);
+```
+
 ### Dashboard with Inline SVG Charts
 
 ```typescript
@@ -184,7 +210,7 @@ hotkeys.create({
 ## Documentation
 
 ```
-docs/core.md      -- encoding, crypto, password, dates, text, fuzzy, charts, cache, result, svg, streaming, ...
+docs/core.md      -- encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, streaming, ...
 docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store, theme
 docs/solid.md     -- mutation, hotkeys, dnd, timed, localstorage, ...
 
