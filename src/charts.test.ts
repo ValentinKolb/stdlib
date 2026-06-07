@@ -1260,6 +1260,16 @@ describe("charts.sparkline — area", () => {
     expect(svg).toContain(`fill="url(#${gradId})"`);
   });
 
+  it("area mode composes with smooth curves", () => {
+    const svg = sparkline({ data: [72, 74, 73, 76, 78], area: true, smooth: true });
+    const areaPath = /<path class="stdlib-chart-sparkline-area"[^>]* d="([^"]+)"\/>/.exec(svg);
+    const strokePath = /<path class="stdlib-chart-sparkline" d="([^"]+)"\/>/.exec(svg);
+    expect(areaPath).not.toBeNull();
+    expect(strokePath).not.toBeNull();
+    expect(areaPath![1]!).toContain(" C ");
+    expect(strokePath![1]!).toContain(" C ");
+  });
+
   it("gradient IDs are unique across multiple sparkline calls", () => {
     const a = sparkline({ data: [1, 2, 3], area: true });
     const b = sparkline({ data: [1, 2, 3], area: true });

@@ -969,8 +969,8 @@ charts.bar({
   showValues: true,
 });
 
-// Sparkline with soft area fill + min/max + last-point dots
-charts.sparkline({ data: weeklyVisitors, area: true, showMinMax: true, showLast: true });
+// Smooth sparkline with soft gradient area fill + min/max + last-point dots
+charts.sparkline({ data: weeklyVisitors, smooth: true, area: true, showMinMax: true, showLast: true });
 ```
 
 ### Styling
@@ -1002,7 +1002,7 @@ Pass `className` to scope per-instance styles.
 - `histogram` uses Sturges' formula by default for bin count; pass an array of edges for explicit bins.
 - `boxplot` uses R-7 (linear interpolation) for quartiles and Tukey's 1.5×IQR rule for whiskers/outliers.
 - Sparkline reserves a wider edge inset (~3px) when `showLast`/`showMinMax` is set so dots aren't clipped at the viewBox boundary.
-- Sparkline `area: true` emits an inline `<linearGradient>` and a closed area path below the stroke. The gradient ID is unique per generated SVG so multiple inline sparklines can coexist in one document.
+- Sparkline `area: true` emits an inline `<linearGradient>` and a closed area path below the stroke. It composes with the default smooth curve; pass `smooth: false` only when a straight-segment dashboard line is desired. The gradient ID is unique per generated SVG so multiple inline sparklines can coexist in one document.
 - `bar` always includes 0 in the y-domain so bars rest on a visible baseline. Negative values produce bars below the zero line; mixed pos/neg renders an explicit zero line.
 - `pie` filters non-positive values entirely (no zero-sized slices). 100% single-slice renders a full circle (path uses two 180° arcs since a single SVG `A` command can't draw a complete circle unambiguously).
 - `line` and `sparkline` smooth curves use Catmull-Rom→Bezier with tension factor 1/6 (standard, no overshoot for typical UI data). Pass `smooth: false` for straight segments.

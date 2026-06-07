@@ -315,11 +315,11 @@ const cases: Case[] = [
   },
   {
     name: "sparkline-area",
-    title: "Sparkline — stroke + gradient fade-to-transparent (dashboard tile)",
+    title: "Sparkline — smooth stroke + gradient fade-to-transparent (dashboard tile)",
     svg: charts.sparkline({
-      data: [12, 18, 9, 14, 22, 17, 26, 19, 24, 31, 20, 28, 23, 35, 29],
+      data: [72, 74, 73, 76, 78, 77, 80, 79, 82, 84, 83, 86, 85, 88, 87],
       area: true,
-      smooth: false,
+      smooth: true,
       width: 240,
       height: 56,
     }),
