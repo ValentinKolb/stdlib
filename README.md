@@ -50,6 +50,20 @@ await kvStore.setBytes(`cache:${hash}`, new Uint8Array(await processed.arrayBuff
 console.log(`Cached ${text.pprintBytes(processed.size)} image`);
 ```
 
+### Generate IDs and Keys
+
+```typescript
+import { crypto } from "@valentinkolb/stdlib";
+
+const publicId = crypto.common.ulid();                       // sortable 26-char ULID
+const batchId = crypto.common.ulid({ monotonic: true });      // ordered within the same millisecond
+const requestId = crypto.common.uuid();                       // UUID v4
+const supportCode = crypto.common.readableId();               // human-readable ID
+const secretKey = crypto.common.generateKey();                // 256-bit hex key
+```
+
+ULIDs are sortable identifiers, not secrets. Their millisecond timestamp is visible; use `generateKey()` for reset tokens, API tokens, and encryption keys.
+
 ### API Data with Error Handling
 
 ```typescript

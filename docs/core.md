@@ -30,7 +30,7 @@ encoding.fromBase62("8M0kX");        // 123456789
 
 ## crypto
 
-SHA-256 hashing, key generation, symmetric/asymmetric encryption, TOTP, and digital signatures. All built on the Web Crypto API.
+SHA-256 hashing, UUID/ULID generation, key generation, symmetric/asymmetric encryption, TOTP, and digital signatures. All built on the Web Crypto API.
 
 ### Common utilities
 
@@ -40,10 +40,15 @@ import { crypto } from "@valentinkolb/stdlib";
 await crypto.common.hash("hello");          // SHA-256 hex string
 crypto.common.fnv1aHash("hello");           // fast non-crypto hash
 crypto.common.uuid();                       // crypto.randomUUID()
+crypto.common.ulid();                       // sortable 26-char ULID
+crypto.common.ulid({ timestamp: Date.now() });
+crypto.common.ulid({ monotonic: true });     // ordered within the same millisecond
 crypto.common.readableId();                 // "a3X-B7nm-4Kp-qR9v"
 crypto.common.readableId(5, 5);             // "3nK4p-Xm9Bq"
 crypto.common.generateKey();                // 256-bit hex key
 ```
+
+ULIDs are sortable identifiers, not secrets: the timestamp is visible in the first 10 characters. Use `generateKey()` for tokens or credentials.
 
 ### Symmetric encryption (AES-256-GCM)
 

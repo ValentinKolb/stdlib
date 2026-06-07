@@ -2,7 +2,8 @@
 name: stdlib-core
 description: >
   ALWAYS use when code imports from "@valentinkolb/stdlib" or when the user needs
-  encoding (Base64/Hex/Base32/Base62), hashing (SHA-256, FNV-1a), cryptography (asymmetric
+  encoding (Base64/Hex/Base32/Base62), hashing (SHA-256, FNV-1a), UUID/ULID
+  generation, readable IDs, cryptography (asymmetric
   ECDSA+ECDH key pairs, symmetric AES-256-GCM encryption, TOTP two-factor auth),
   password generation and strength analysis (random, memorable, PIN, strength), date/time formatting (UTC defaults,
   IANA timezone support, relative time, durations, time spans), calendar utilities (month/week grids,
@@ -96,6 +97,7 @@ crypto.common.hash(input: string | Uint8Array): Promise<string>   // SHA-256, re
 crypto.common.fnv1aHash(s: string): string                        // sync FNV-1a, NOT cryptographic
 crypto.common.readableId(...pattern: number[]): string             // e.g. readableId() => "a3X-B7nm-4Kp-qR9v"
 crypto.common.uuid(): string                                       // crypto.randomUUID() wrapper
+crypto.common.ulid(options?: { timestamp?: number | Date; monotonic?: boolean }): string // sortable ULID, not a secret
 crypto.common.generateKey(length?: number): string                 // random hex key, default 32 bytes (256-bit)
 ```
 
@@ -107,8 +109,12 @@ crypto.common.fnv1aHash("hello");        // "4f9f2cab"
 crypto.common.readableId();              // "a3X-B7nm-4Kp-qR9v"
 crypto.common.readableId(5, 5);          // "3nK4p-Xm9Bq"
 crypto.common.uuid();                    // "550e8400-e29b-..."
+crypto.common.ulid();                    // "01K..."
+crypto.common.ulid({ monotonic: true }); // ordered within the same millisecond
 const key = crypto.common.generateKey(); // 64-char hex string
 ```
+
+ULIDs expose their millisecond timestamp. Use `generateKey()` for tokens, credentials, and other secret values.
 
 ### crypto.asymmetric
 

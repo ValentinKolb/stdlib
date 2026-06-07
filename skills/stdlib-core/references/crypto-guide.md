@@ -21,6 +21,25 @@ const digest = await crypto.common.hash("user-input");
 const bucket = crypto.common.fnv1aHash("cache-key");
 ```
 
+### Identifiers vs Secrets
+
+| Function | Sortable | Human-friendly | Secret-safe | Use Case |
+|---|---:|---:|---:|---|
+| `crypto.common.ulid()` | Yes | Fair | No | Sortable entity IDs, log correlation, database keys |
+| `crypto.common.uuid()` | No | No | No | Opaque public IDs where sort order is irrelevant |
+| `crypto.common.readableId()` | No | Yes | No | Support codes, invite codes that are not security credentials |
+| `crypto.common.generateKey()` | No | No | Yes | Reset tokens, API tokens, encryption keys |
+
+```ts
+const id = crypto.common.ulid();
+const orderedId = crypto.common.ulid({ monotonic: true });
+const requestId = crypto.common.uuid();
+const supportCode = crypto.common.readableId();
+const token = crypto.common.generateKey();
+```
+
+ULIDs expose a millisecond timestamp in the first 10 characters. With `{ monotonic: true }`, same-millisecond suffixes are incremented. Use ULIDs for orderable identifiers, not for secrets.
+
 ### Asymmetric vs Symmetric Encryption
 
 | Module | Algorithm | Best For |
@@ -102,7 +121,7 @@ const { privateKey, publicKey } = await crypto.asymmetric.generate();
 
 ### Symmetric Key Generation
 
-Use `generateKey()` for high-entropy symmetric keys. Never use `readableId()` or `uuid()` as encryption keys.
+Use `generateKey()` for high-entropy symmetric keys. Never use `readableId()`, `uuid()`, or `ulid()` as encryption keys.
 
 ```ts
 const key = crypto.common.generateKey();     // 64-char hex string (256-bit)
@@ -237,6 +256,17 @@ const token = crypto.common.readableId(); // "a3X-B7nm-4Kp-qR9v"
 
 // RIGHT -- cryptographically random, high entropy
 const token = crypto.common.generateKey(); // 64-char hex (256-bit)
+```
+
+### `ulid` is Sortable, Not Secret
+
+`ulid()` creates sortable identifiers with 80 bits of crypto randomness, but the millisecond timestamp is visible in the first 10 characters. With `{ monotonic: true }`, same-millisecond suffixes are incremented and therefore partly predictable.
+
+```ts
+const id = crypto.common.ulid(); // good for sortable entity IDs
+
+// RIGHT for reset/API tokens
+const token = crypto.common.generateKey();
 ```
 
 ### `fnv1aHash` is NOT Collision-Resistant

@@ -97,6 +97,100 @@ describe("common.uuid", () => {
 });
 
 // ==========================
+// common.ulid
+// ==========================
+
+const withMockedRandomValues = <T>(values: number[][], fn: () => T): T => {
+  const originalGetRandomValues = globalThis.crypto.getRandomValues;
+  let calls = 0;
+
+  globalThis.crypto.getRandomValues = ((array: Uint8Array) => {
+    const bytes = values[Math.min(calls, values.length - 1)] ?? [];
+    calls += 1;
+    array.fill(0);
+    array.set(bytes.slice(0, array.length));
+    return array;
+  }) as Crypto["getRandomValues"];
+
+  try {
+    return fn();
+  } finally {
+    globalThis.crypto.getRandomValues = originalGetRandomValues;
+  }
+};
+
+describe("common.ulid", () => {
+  it("returns a canonical ULID", () => {
+    const id = common.ulid();
+    expect(id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+  });
+
+  it("encodes the zero timestamp and zero random value", () => {
+    withMockedRandomValues([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], () => {
+      expect(common.ulid({ timestamp: 0 })).toBe("00000000000000000000000000");
+    });
+  });
+
+  it("encodes the maximum valid ULID value", () => {
+    withMockedRandomValues([[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]], () => {
+      expect(common.ulid({ timestamp: 0xffffffffffff })).toBe("7ZZZZZZZZZZZZZZZZZZZZZZZZZ");
+    });
+  });
+
+  it("accepts Date timestamps", () => {
+    withMockedRandomValues([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], () => {
+      const fromNumber = common.ulid({ timestamp: 1_786_000_000_000 });
+      const fromDate = common.ulid({ timestamp: new Date(1_786_000_000_000) });
+      expect(fromDate).toBe(fromNumber);
+    });
+  });
+
+  it("uses crypto randomness for the random suffix", () => {
+    withMockedRandomValues(
+      [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+      ],
+      () => {
+        const first = common.ulid({ timestamp: 123 });
+        const second = common.ulid({ timestamp: 123 });
+        expect(first).not.toBe(second);
+        expect(first.slice(0, 10)).toBe(second.slice(0, 10));
+      },
+    );
+  });
+
+  it("increments the random suffix for monotonic calls in the same millisecond", () => {
+    withMockedRandomValues([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], () => {
+      const first = common.ulid({ timestamp: 456, monotonic: true });
+      const second = common.ulid({ timestamp: 456, monotonic: true });
+      const third = common.ulid({ timestamp: 456, monotonic: true });
+
+      expect(first < second).toBe(true);
+      expect(second < third).toBe(true);
+      expect(first.slice(10)).toBe("0000000000000000");
+      expect(second.slice(10)).toBe("0000000000000001");
+      expect(third.slice(10)).toBe("0000000000000002");
+    });
+  });
+
+  it("rejects invalid timestamps", () => {
+    expect(() => common.ulid({ timestamp: Number.NaN })).toThrow(TypeError);
+    expect(() => common.ulid({ timestamp: 1.5 })).toThrow(TypeError);
+    expect(() => common.ulid({ timestamp: -1 })).toThrow(RangeError);
+    expect(() => common.ulid({ timestamp: 0x1000000000000 })).toThrow(RangeError);
+    expect(() => common.ulid({ timestamp: new Date(Number.NaN) })).toThrow(TypeError);
+  });
+
+  it("throws when monotonic randomness overflows", () => {
+    withMockedRandomValues([[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]], () => {
+      expect(common.ulid({ timestamp: 789, monotonic: true })).toBe("00000000RNZZZZZZZZZZZZZZZZ");
+      expect(() => common.ulid({ timestamp: 789, monotonic: true })).toThrow(RangeError);
+    });
+  });
+});
+
+// ==========================
 // common.generateKey
 // ==========================
 

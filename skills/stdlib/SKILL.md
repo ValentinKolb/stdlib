@@ -4,7 +4,8 @@ description: >
   Use this skill whenever code imports from @valentinkolb/stdlib or when the
   user needs help choosing the right utility module for encoding, crypto, dates,
   files, images, caching, storage, SolidJS primitives, or any general-purpose
-  TypeScript utility. Trigger broadly: any mention of hashing, encryption, QR
+  TypeScript utility. Trigger broadly: any mention of hashing, encryption, UUIDs,
+  ULIDs, sortable IDs, QR
   codes, file downloads, image processing, drag-and-drop, hotkeys, clipboard,
   cookies, localStorage, notifications, search params, timing, text formatting,
   syntax highlighting, markdown editor overlays, domain-specific language
@@ -38,6 +39,7 @@ sub-paths.
 | Hash a string (SHA-256) | `crypto.common.hash` | core |
 | Hash synchronously (non-crypto) | `crypto.common.fnv1aHash` | core |
 | Generate a UUID | `crypto.common.uuid` | core |
+| Generate a sortable ULID | `crypto.common.ulid` | core |
 | Generate a readable ID | `crypto.common.readableId` | core |
 | Generate a symmetric key | `crypto.common.generateKey` | core |
 | Generate a random/memorable/PIN password | `password.random/memorable/pin` | core |

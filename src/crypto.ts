@@ -25,6 +25,11 @@ const TOTP_MAX_WINDOW = 10;
 /** Standard TOTP token length (6 digits per RFC 6238). */
 const TOTP_TOKEN_LEN = 6;
 
+/** Canonical ULID Crockford Base32 alphabet. Excludes I, L, O, and U. */
+const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const ULID_RANDOM_BYTES = 10; // 80 bits
+const ULID_MAX_TIMESTAMP = 0xffffffffffff; // 48-bit millisecond timestamp
+
 /** Minimum HKDF IKM length, in hex characters (8 bytes = 64 bits). Reject
  *  shorter inputs as cryptographically uninteresting. */
 const HKDF_MIN_HEX_LEN = 16;
@@ -142,6 +147,20 @@ const buildSignedPayloadV1 = (
 // COMMON UTILITIES
 //====================================
 
+export type UlidOptions = {
+  /** Unix timestamp in milliseconds. Defaults to Date.now(). */
+  timestamp?: number | Date;
+  /**
+   * Increment the random component for repeated calls in the same millisecond.
+   * This keeps monotonic calls lexicographically sorted, but the incremented
+   * random suffix is partly predictable and must not be used as a secret.
+   */
+  monotonic?: boolean;
+};
+
+let lastMonotonicUlidTime = -1;
+let lastMonotonicUlidRandom: Uint8Array | undefined;
+
 /**
  * Async hash a string using SHA-256
  * @param s - The string or Uint8Array to hash
@@ -211,6 +230,80 @@ const generateKey = (length: number = 32): string => {
   return toHex(globalThis.crypto.getRandomValues(new Uint8Array(length)));
 };
 
+const normalizeUlidTimestamp = (timestamp: number | Date | undefined): number => {
+  const value = timestamp instanceof Date ? timestamp.getTime() : timestamp ?? Date.now();
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new TypeError("crypto.common.ulid: timestamp must be a finite integer millisecond value");
+  }
+  if (value < 0 || value > ULID_MAX_TIMESTAMP) {
+    throw new RangeError("crypto.common.ulid: timestamp must be between 0 and 2^48 - 1 milliseconds");
+  }
+  return value;
+};
+
+const encodeUlidTime = (timestamp: number, out: string[]): void => {
+  let value = BigInt(timestamp);
+  for (let i = 9; i >= 0; i--) {
+    out[i] = ULID_ALPHABET[Number(value & 31n)]!;
+    value >>= 5n;
+  }
+};
+
+const encodeUlidRandom = (randomBytes: Uint8Array, out: string[]): void => {
+  let value = bytesToBigInt(randomBytes);
+  for (let i = 25; i >= 10; i--) {
+    out[i] = ULID_ALPHABET[Number(value & 31n)]!;
+    value >>= 5n;
+  }
+};
+
+const incrementUlidRandom = (randomBytes: Uint8Array): Uint8Array => {
+  const next = new Uint8Array(randomBytes);
+  for (let i = next.length - 1; i >= 0; i--) {
+    if (next[i]! < 0xff) {
+      next[i]! += 1;
+      return next;
+    }
+    next[i] = 0;
+  }
+  throw new RangeError("crypto.common.ulid: monotonic random component overflow");
+};
+
+/**
+ * Generate a ULID (Universally Unique Lexicographically Sortable Identifier).
+ *
+ * ULIDs are 26-character Crockford Base32 identifiers with a 48-bit millisecond
+ * timestamp prefix and 80 bits of cryptographic randomness. They are sortable
+ * identifiers, not secrets: the creation timestamp is visible in the string.
+ *
+ * @param options - Optional timestamp and monotonic generation mode.
+ * @returns Canonical uppercase ULID string.
+ * @example
+ * ulid() // "01K..."
+ * ulid({ monotonic: true }) // sorted among monotonic calls in the same millisecond
+ * ulid({ timestamp: new Date("2026-06-07T12:00:00Z") })
+ */
+const ulid = (options: UlidOptions = {}): string => {
+  const timestamp = normalizeUlidTimestamp(options.timestamp);
+  let randomBytes: Uint8Array;
+
+  if (options.monotonic === true && timestamp === lastMonotonicUlidTime && lastMonotonicUlidRandom) {
+    randomBytes = incrementUlidRandom(lastMonotonicUlidRandom);
+  } else {
+    randomBytes = globalThis.crypto.getRandomValues(new Uint8Array(ULID_RANDOM_BYTES));
+  }
+
+  if (options.monotonic === true) {
+    lastMonotonicUlidTime = timestamp;
+    lastMonotonicUlidRandom = randomBytes;
+  }
+
+  const chars = new Array<string>(26);
+  encodeUlidTime(timestamp, chars);
+  encodeUlidRandom(randomBytes, chars);
+  return chars.join("");
+};
+
 /**
  * Returns a cryptographically secure random integer in [0, max).
  * Uses rejection sampling to eliminate modulo bias.
@@ -239,6 +332,7 @@ export const common = {
   readableId,
   /** Generate a random UUID v4 using the platform's crypto API. */
   uuid: () => globalThis.crypto.randomUUID(),
+  ulid,
   generateKey,
 };
 
