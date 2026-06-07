@@ -314,6 +314,17 @@ const cases: Case[] = [
     }),
   },
   {
+    name: "sparkline-area",
+    title: "Sparkline — stroke + gradient fade-to-transparent (dashboard tile)",
+    svg: charts.sparkline({
+      data: [12, 18, 9, 14, 22, 17, 26, 19, 24, 31, 20, 28, 23, 35, 29],
+      area: true,
+      smooth: false,
+      width: 240,
+      height: 56,
+    }),
+  },
+  {
     name: "histogram",
     title: "Histogram — gaussian sample (n=1000)",
     svg: charts.histogram({

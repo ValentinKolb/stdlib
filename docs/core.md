@@ -470,7 +470,7 @@ charts.line({ series: [{ data: [...] }, { data: [...] }] });
 charts.bar({ data: [{label:"Q1",value:120}], colorByBar: true });
 charts.pie({ data: [{label:"A",value:30}], showLabels: true });
 charts.donut({ data: [...] });
-charts.sparkline({ data: [3,7,5,9,12,10,14], showLast: true });
+charts.sparkline({ data: [3,7,5,9,12,10,14], area: true, showLast: true });
 charts.histogram({ data: observations, bins: 30 });
 charts.boxplot({ groups: [{label:"A", values:[1,2,3,4,5]}] });
 ```
@@ -536,6 +536,19 @@ charts.scatter({
 
 Non-positive values are filtered automatically under log scale.
 
+### Sparklines: inline trends
+
+```ts
+charts.sparkline({
+  data: weeklyVisitors,
+  area: true,        // soft currentColor gradient below the stroke
+  showMinMax: true,
+  showLast: true,
+  width: 120,
+  height: 32,
+});
+```
+
 ### Histogram & box plot (statistical)
 
 ```ts
@@ -582,7 +595,8 @@ Charts ship with embedded default CSS. Override via:
    .my-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
    ```
 3. **`currentColor`** is used for axes, tick labels, error bars, references,
-   and sparklines — set the parent's `color` for theming (dark mode "just works").
+   sparklines, and sparkline area gradients — set the parent's `color` for
+   theming (dark mode "just works").
 4. The chart's font is **inherited from the surrounding HTML** — the app's
    font automatically applies.
 

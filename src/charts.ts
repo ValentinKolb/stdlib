@@ -180,6 +180,7 @@ const DEFAULT_STYLES = `
 .stdlib-chart-line { fill: none; stroke-width: 2; }
 .stdlib-chart-area { fill-opacity: 0.18; stroke: none; }
 .stdlib-chart-sparkline { fill: none; stroke-width: 1.5; stroke: currentColor; }
+.stdlib-chart-sparkline-area { stroke: none; }
 .stdlib-chart-sparkline-last { fill: currentColor; stroke: none; }
 .stdlib-chart-sparkline-max { fill: #10b981; stroke: none; }
 .stdlib-chart-sparkline-min { fill: #ef4444; stroke: none; }
@@ -2025,9 +2026,21 @@ type SparklineOptions = {
   /** Render dots at the highest and lowest data points. Skipped when all
    *  values are equal. Default false. */
   showMinMax?: boolean;
+  /** Render a soft gradient fill below the stroke line, fading from a
+   *  translucent `currentColor` at the top to fully transparent at the
+   *  bottom — the classic dashboard-tile look. The stroke line stays
+   *  visible on top, and dots from `showLast`/`showMinMax` compose over
+   *  the fill. Default false. */
+  area?: boolean;
   /** Appended to the root `<svg>`'s class attribute. */
   className?: string;
 };
+
+// Monotonically incrementing counter for per-instance gradient IDs. Using a
+// module-level counter (vs. random) keeps output stable enough that repeated
+// renders of the same input in a process produce predictable IDs in sequence,
+// while still being unique within a document.
+let sparklineGradientCounter = 0;
 
 const normalizeSparklineData = (data: number[] | Point[]): Point[] => {
   if (data.length === 0) return [];
@@ -2061,6 +2074,10 @@ const normalizeSparklineData = (data: number[] | Point[]): Point[] => {
  *   showLast: true,
  *   width: 120,
  * });
+ *
+ * @example
+ * // Dashboard-tile look: stroke + soft gradient fill fading to transparent.
+ * charts.sparkline({ data: [3, 7, 5, 9, 12, 10, 14], area: true });
  */
 export const sparkline = (opts: SparklineOptions): string => {
   const width = opts.width ?? 80;
@@ -2090,9 +2107,30 @@ export const sparkline = (opts: SparklineOptions): string => {
   }));
 
   const pathFn = opts.smooth === false ? linePathD : smoothPathD;
-  const body: string[] = [
-    `<path class="stdlib-chart-sparkline" d="${pathFn(mapped)}"/>`,
-  ];
+  const linePath = pathFn(mapped);
+  const body: string[] = [];
+
+  if (opts.area) {
+    // Gradient-fill area UNDER the stroke line: fades from a translucent
+    // currentColor at the top to fully transparent at the bottom. The fill
+    // path extends all the way down to the bottom of the viewBox; the
+    // gradient handles the visual fade-out — no need for special bottom
+    // padding. Stroke renders on top via the regular `.sparkline` path below.
+    const gradId = `stdlib-spark-grad-${++sparklineGradientCounter}`;
+    const first = mapped[0]!;
+    const last = mapped[mapped.length - 1]!;
+    const areaPath = `${linePath} L ${fmt(last.x)} ${fmt(height)} L ${fmt(first.x)} ${fmt(height)} Z`;
+    body.push(
+      `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">` +
+        `<stop offset="0%" stop-color="currentColor" stop-opacity="0.28"/>` +
+        `<stop offset="100%" stop-color="currentColor" stop-opacity="0"/>` +
+      `</linearGradient></defs>`,
+    );
+    body.push(
+      `<path class="stdlib-chart-sparkline-area" fill="url(#${gradId})" d="${areaPath}"/>`,
+    );
+  }
+  body.push(`<path class="stdlib-chart-sparkline" d="${linePath}"/>`);
 
   if (opts.showMinMax) {
     let minIdx = 0;

@@ -896,6 +896,7 @@ charts.sparkline(opts: {
   data: number[] | Point[];
   width?: number; height?: number; // defaults 80x20
   smooth?: boolean;                // default true
+  area?: boolean;                   // soft currentColor gradient fill below stroke
   showLast?: boolean;              // dot at last point
   showMinMax?: boolean;            // dots at highest/lowest points
   className?: string;
@@ -968,8 +969,8 @@ charts.bar({
   showValues: true,
 });
 
-// Sparkline with min/max + last-point dots
-charts.sparkline({ data: weeklyVisitors, showMinMax: true, showLast: true });
+// Sparkline with soft area fill + min/max + last-point dots
+charts.sparkline({ data: weeklyVisitors, area: true, showMinMax: true, showLast: true });
 ```
 
 ### Styling
@@ -984,8 +985,8 @@ Charts ship with embedded default CSS. Override via:
    ```css
    .stdlib-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
    ```
-3. `currentColor` for axes, tick labels, error bars, references, sparklines —
-   set parent `color` for theming (dark mode "just works").
+3. `currentColor` for axes, tick labels, error bars, references, sparklines,
+   and sparkline area gradients — set parent `color` for theming (dark mode "just works").
 4. Font is inherited from the surrounding HTML — the app's font auto-applies.
 
 Pass `className` to scope per-instance styles.
@@ -1001,6 +1002,7 @@ Pass `className` to scope per-instance styles.
 - `histogram` uses Sturges' formula by default for bin count; pass an array of edges for explicit bins.
 - `boxplot` uses R-7 (linear interpolation) for quartiles and Tukey's 1.5×IQR rule for whiskers/outliers.
 - Sparkline reserves a wider edge inset (~3px) when `showLast`/`showMinMax` is set so dots aren't clipped at the viewBox boundary.
+- Sparkline `area: true` emits an inline `<linearGradient>` and a closed area path below the stroke. The gradient ID is unique per generated SVG so multiple inline sparklines can coexist in one document.
 - `bar` always includes 0 in the y-domain so bars rest on a visible baseline. Negative values produce bars below the zero line; mixed pos/neg renders an explicit zero line.
 - `pie` filters non-positive values entirely (no zero-sized slices). 100% single-slice renders a full circle (path uses two 180° arcs since a single SVG `A` command can't draw a complete circle unambiguously).
 - `line` and `sparkline` smooth curves use Catmull-Rom→Bezier with tension factor 1/6 (standard, no overshoot for typical UI data). Pass `smooth: false` for straight segments.

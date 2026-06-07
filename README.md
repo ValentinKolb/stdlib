@@ -165,7 +165,7 @@ const revenue = charts.bar({
 // Inline sparkline for a metric-row trend indicator
 const trend = charts.sparkline({
   data: weeklyVisitors,
-  smooth: true, showMinMax: true, showLast: true,
+  smooth: true, area: true, showMinMax: true, showLast: true,
 });
 
 // Scientific scatter with error bars and linear-regression overlay

@@ -1227,6 +1227,85 @@ describe("charts reference lines", () => {
 });
 
 // =====================================================================
+// sparkline area
+// =====================================================================
+
+describe("charts.sparkline — area", () => {
+  it("renders BOTH the stroke line and the area fill when area: true", () => {
+    const svg = sparkline({ data: [3, 7, 5, 9, 12, 10, 14], area: true });
+    expect(svg).toContain('<path class="stdlib-chart-sparkline"');
+    expect(svg).toContain('<path class="stdlib-chart-sparkline-area"');
+  });
+
+  it("renders a stroke line and no area path when area is false/undefined", () => {
+    const svg = sparkline({ data: [3, 7, 5, 9, 12] });
+    expect(svg).toContain('<path class="stdlib-chart-sparkline"');
+    expect(svg).not.toContain('<path class="stdlib-chart-sparkline-area"');
+    expect(svg).not.toContain("<linearGradient");
+  });
+
+  it("emits a linearGradient fading from translucent to transparent", () => {
+    const svg = sparkline({ data: [1, 5, 2, 6], area: true });
+    // Vertical gradient (top→bottom) with two stops.
+    expect(svg).toMatch(/<linearGradient id="[^"]+" x1="0" y1="0" x2="0" y2="1">/);
+    expect(svg).toMatch(/stop-color="currentColor" stop-opacity="0\.28"/);
+    expect(svg).toContain('stop-opacity="0"');
+  });
+
+  it("area fill path references the gradient via url(#...)", () => {
+    const svg = sparkline({ data: [1, 5, 2, 6], area: true });
+    const gradMatch = /<linearGradient id="([^"]+)"/.exec(svg);
+    expect(gradMatch).not.toBeNull();
+    const gradId = gradMatch![1]!;
+    expect(svg).toContain(`fill="url(#${gradId})"`);
+  });
+
+  it("gradient IDs are unique across multiple sparkline calls", () => {
+    const a = sparkline({ data: [1, 2, 3], area: true });
+    const b = sparkline({ data: [1, 2, 3], area: true });
+    const idA = /<linearGradient id="([^"]+)"/.exec(a)![1]!;
+    const idB = /<linearGradient id="([^"]+)"/.exec(b)![1]!;
+    expect(idA).not.toBe(idB);
+  });
+
+  it("area path is closed and extends down to the bottom edge", () => {
+    const svg = sparkline({
+      data: [1, 5, 2, 6],
+      area: true,
+      width: 100,
+      height: 30,
+      smooth: false,
+    });
+    const path = /<path class="stdlib-chart-sparkline-area"[^>]* d="([^"]+)"\/>/.exec(svg)![1]!;
+    // Path ends with two L commands to the bottom and a Z to close.
+    expect(path.trim().endsWith("Z")).toBe(true);
+    // Bottom-edge y == height (30) — must appear at least twice (last-x + first-x).
+    const bottomEdgeCount = (path.match(/ 30(?:\D|$)/g) ?? []).length;
+    expect(bottomEdgeCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("area mode still composes with showLast / showMinMax dots", () => {
+    const svg = sparkline({
+      data: [3, 7, 5, 9, 12, 4, 14],
+      area: true,
+      showLast: true,
+      showMinMax: true,
+    });
+    expect(svg).toContain('<path class="stdlib-chart-sparkline-area"');
+    expect(svg).toContain('<path class="stdlib-chart-sparkline"');
+    expect(svg).toContain('class="stdlib-chart-sparkline-last"');
+    expect(svg).toContain('class="stdlib-chart-sparkline-max"');
+    expect(svg).toContain('class="stdlib-chart-sparkline-min"');
+  });
+
+  it("area: false yields identical output to omitting the option", () => {
+    const a = sparkline({ data: [1, 2, 3, 4] });
+    const b = sparkline({ data: [1, 2, 3, 4], area: false });
+    expect(a).toBe(b);
+  });
+});
+
+// =====================================================================
 // sparkline showMinMax
 // =====================================================================
 
