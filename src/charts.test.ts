@@ -9,6 +9,11 @@ import {
   sparkline,
   histogram,
   boxplot,
+  gauge,
+  barGauge,
+  stat,
+  heatmap,
+  stateTimeline,
   // helpers
   escapeXml,
   normalizePadding,
@@ -1619,11 +1624,149 @@ describe("charts legend", () => {
 });
 
 // =====================================================================
+// dashboard panels
+// =====================================================================
+
+describe("charts.gauge", () => {
+  it("renders a radial gauge with value, label, and track/fill paths", () => {
+    const svg = gauge({ value: 72, min: 0, max: 100, label: "CPU", unit: "%" });
+    expect(svg).toContain('class="stdlib-chart');
+    expect(svg).toContain("stdlib-chart-gauge-track");
+    expect(svg).toContain("stdlib-chart-gauge-fill");
+    expect(svg).toContain("72%");
+    expect(svg).toContain(">CPU<");
+  });
+
+  it("renders threshold gradients without overlapping segment arcs", () => {
+    const svg = gauge({
+      value: 85,
+      thresholds: [
+        { value: 70 },
+        { value: 90 },
+        { value: 100 },
+      ],
+    });
+    expect(svg).not.toContain("<linearGradient");
+    expect(svg).toContain("stdlib-chart-gauge-gradient-segment stdlib-chart-gauge-gradient-scale");
+    expect(count(svg, '<path class="stdlib-chart-gauge-gradient-segment stdlib-chart-gauge-gradient-scale')).toBe(72);
+    expect(count(svg, '<path class="stdlib-chart-gauge-gradient-segment"')).toBeGreaterThan(50);
+    expect(svg).toContain("var(--stdlib-chart-c1)");
+    expect(svg).toContain("var(--stdlib-chart-c2)");
+    expect(svg).toContain("var(--stdlib-chart-c3)");
+  });
+
+  it("escapes labels and supports custom colors as SVG attributes", () => {
+    const svg = gauge({
+      value: 95,
+      label: "<CPU>",
+      thresholds: [{ value: 100, color: "#ef4444" }],
+    });
+    expect(svg).toContain("&lt;CPU&gt;");
+    expect(svg).toContain('stroke="#ef4444"');
+  });
+
+  it("does not render a needle unless explicitly requested", () => {
+    expect(gauge({ value: 72 })).not.toContain('<line class="stdlib-chart-gauge-needle');
+    expect(gauge({ value: 72, showNeedle: true })).toContain('<line class="stdlib-chart-gauge-needle');
+  });
+});
+
+describe("charts.barGauge", () => {
+  it("renders one filled bar per finite item", () => {
+    const svg = barGauge({
+      data: [
+        { label: "API", value: 63, unit: "ms" },
+        { label: "Disk", value: 91, unit: "%" },
+      ],
+    });
+    expect(count(svg, '<rect class="stdlib-chart-bar-gauge-fill')).toBe(2);
+    expect(svg).toContain(">API<");
+    expect(svg).toContain("63ms");
+  });
+
+  it("renders empty-state text when no finite values exist", () => {
+    const svg = barGauge({ data: [{ label: "bad", value: NaN }] });
+    expect(svg).toContain("No data");
+  });
+});
+
+describe("charts.stat", () => {
+  it("renders label, value, delta, and sparkline paths", () => {
+    const svg = stat({
+      label: "Requests / min",
+      value: 12482,
+      delta: 8.4,
+      deltaFormat: (v) => `${v}%`,
+      sparkline: [1, 2, 3, 2, 5],
+    });
+    expect(svg).toContain("Requests / min");
+    expect(svg).toContain("12482");
+    expect(svg).toContain("+8.4%");
+    expect(svg).toContain("stdlib-chart-stat-delta-up");
+    expect(svg).toContain("stdlib-chart-stat-sparkline");
+  });
+
+  it("marks negative numeric deltas as down", () => {
+    const svg = stat({ label: "Errors", value: 12, delta: -3 });
+    expect(svg).toContain("stdlib-chart-stat-delta-down");
+  });
+});
+
+describe("charts.heatmap", () => {
+  it("renders one cell per finite data point", () => {
+    const svg = heatmap({
+      data: [
+        { x: "00", y: "p50", value: 10 },
+        { x: "04", y: "p50", value: 20 },
+        { x: "00", y: "p95", value: 40 },
+      ],
+    });
+    expect(count(svg, '<rect class="stdlib-chart-heatmap-cell')).toBe(3);
+    expect(svg).toContain(">00<");
+    expect(svg).toContain(">p95<");
+  });
+
+  it("supports visible values and escapes labels", () => {
+    const svg = heatmap({
+      data: [{ x: "<x>", y: "row", value: 7 }],
+      showValues: true,
+    });
+    expect(svg).toContain("&lt;x&gt;");
+    expect(svg).toContain(">7<");
+  });
+});
+
+describe("charts.stateTimeline", () => {
+  it("renders state regions for intervals", () => {
+    const svg = stateTimeline({
+      rows: [
+        {
+          label: "API",
+          intervals: [
+            { from: 0, to: 4, state: "ok" },
+            { from: 4, to: 6, state: "warn" },
+          ],
+        },
+      ],
+      states: [{ state: "ok" }, { state: "warn" }],
+    });
+    expect(count(svg, '<rect class="stdlib-chart-state-region')).toBe(2);
+    expect(svg).toContain(">API<");
+    expect(svg).toContain("stdlib-chart-legend");
+  });
+
+  it("renders empty-state text without rows", () => {
+    const svg = stateTimeline({ rows: [] });
+    expect(svg).toContain("No data");
+  });
+});
+
+// =====================================================================
 // namespace
 // =====================================================================
 
 describe("charts namespace", () => {
-  it("exposes all eight chart functions", () => {
+  it("exposes all chart functions", () => {
     expect(charts.scatter).toBe(scatter);
     expect(charts.line).toBe(line);
     expect(charts.bar).toBe(bar);
@@ -1632,6 +1775,11 @@ describe("charts namespace", () => {
     expect(charts.sparkline).toBe(sparkline);
     expect(charts.histogram).toBe(histogram);
     expect(charts.boxplot).toBe(boxplot);
+    expect(charts.gauge).toBe(gauge);
+    expect(charts.barGauge).toBe(barGauge);
+    expect(charts.stat).toBe(stat);
+    expect(charts.heatmap).toBe(heatmap);
+    expect(charts.stateTimeline).toBe(stateTimeline);
   });
 });
 

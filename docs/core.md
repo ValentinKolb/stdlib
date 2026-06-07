@@ -456,9 +456,10 @@ before keywords.
 
 ## charts
 
-Eight SVG chart generators covering the basic shapes plus the features most
-useful for dashboards and scientific publication: `scatter`, `line`, `bar`,
-`pie`, `donut`, `sparkline`, `histogram`, `boxplot`. Returns SVG strings —
+SVG chart generators covering the basic shapes, dashboard panels, and the
+features most useful for scientific publication: `scatter`, `line`, `bar`,
+`pie`, `donut`, `sparkline`, `histogram`, `boxplot`, `gauge`, `barGauge`,
+`stat`, `heatmap`, `stateTimeline`. Returns SVG strings —
 inject into the DOM, write to disk, or send over the wire. Pure native, no
 peer dependencies.
 
@@ -473,6 +474,11 @@ charts.donut({ data: [...] });
 charts.sparkline({ data: [3,7,5,9,12,10,14], area: true, showLast: true });
 charts.histogram({ data: observations, bins: 30 });
 charts.boxplot({ groups: [{label:"A", values:[1,2,3,4,5]}] });
+charts.gauge({ value: 72, min: 0, max: 100, label: "CPU", unit: "%" });
+charts.barGauge({ data: [{ label: "Disk", value: 91, unit: "%" }] });
+charts.stat({ label: "Requests / min", value: 12482, delta: 8.4, sparkline: [...] });
+charts.heatmap({ data: [{ x: "12:00", y: "p95", value: 89 }] });
+charts.stateTimeline({ rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }] });
 ```
 
 ### Headers, axes, references, legend (every chart type)
@@ -546,6 +552,52 @@ charts.sparkline({
   showLast: true,
   width: 120,
   height: 32,
+});
+```
+
+### Dashboard panels: gauge, bar gauge, stat, heatmap, state timeline
+
+```ts
+charts.gauge({
+  value: 72,
+  min: 0,
+  max: 100,
+  label: "CPU usage",
+  unit: "%",
+  thresholds: [{ value: 70 }, { value: 90 }, { value: 100 }],
+  showNeedle: true,
+});
+
+charts.barGauge({
+  data: [
+    { label: "API latency", value: 63, unit: "ms", max: 120 },
+    { label: "Disk usage", value: 91, unit: "%" },
+  ],
+  thresholds: [{ value: 70 }, { value: 90 }, { value: 100 }],
+});
+
+charts.stat({
+  label: "Requests / min",
+  value: 12482,
+  delta: 8.4,
+  sparkline: weeklyRequests,
+});
+
+charts.heatmap({
+  data: [
+    { x: "00", y: "p95", value: 26 },
+    { x: "04", y: "p95", value: 34 },
+  ],
+  yLabels: ["p95", "p75", "p50"],
+  showValues: true,
+});
+
+charts.stateTimeline({
+  rows: [
+    { label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] },
+  ],
+  states: [{ state: "ok", label: "OK" }],
+  xAxis: { format: v => `${v}:00` },
 });
 ```
 

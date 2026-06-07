@@ -102,6 +102,7 @@ sub-paths.
 | Build a reusable highlighter for a formula, command, query, or DSL | `highlight.compile` | core |
 | Highlight shallow shell or code snippets without parser dependencies | `highlight.presets.shell`, `highlight.presets.code` | core |
 | Generate SVG charts (scatter, line, bar, pie, donut, histogram, box plot) with titles, references, legends, error bars, log scale, trend lines | `charts.scatter/line/bar/pie/donut/histogram/boxplot` | core |
+| Generate styleable SVG dashboard panels (gauge, bar gauge, stat, heatmap, state timeline) for monitoring UIs | `charts.gauge/barGauge/stat/heatmap/stateTimeline` | core |
 | Generate a minimalist inline sparkline (smooth stroke, optional gradient area fill, min/max, last-point dots) | `charts.sparkline` | core |
 | Get a file icon/category | `fileicons.getFileCategory/getFileIcon` | core |
 | Get gradient presets for names | `gradients.gradientPresets` | core |

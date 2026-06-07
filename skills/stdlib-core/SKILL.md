@@ -825,10 +825,11 @@ highlight.presets.code(`const x = "ok"; // hi`);
 
 ## charts
 
-Eight SVG chart generators: scatter, line, bar, pie, donut, sparkline,
-histogram, boxplot. All return SVG strings — inject into the DOM, write to
-disk, or send over the wire. Pure native, no peer dependencies. Stylable
-via CSS classes and CSS custom properties.
+SVG chart generators for plots and dashboard panels: scatter, line, bar, pie,
+donut, sparkline, histogram, boxplot, gauge, barGauge, stat, heatmap,
+stateTimeline. All return SVG strings — inject into the DOM, write to disk, or
+send over the wire. Pure native, no peer dependencies. Stylable via CSS classes
+and CSS custom properties.
 
 ### API
 
@@ -916,6 +917,48 @@ charts.boxplot(opts: ChartOptions & {
   references?: ReferenceLine[];
   colorByBox?: boolean;
 }): string
+
+charts.gauge(opts: ChartOptions & {
+  value: number;
+  min?: number; max?: number;      // defaults 0..100
+  label?: string; unit?: string;
+  format?: (v: number) => string;
+  thresholds?: { value: number; label?: string; color?: string }[];
+  showNeedle?: boolean;
+}): string
+
+charts.barGauge(opts: ChartOptions & {
+  data: { label: string; value: number; min?: number; max?: number; unit?: string }[];
+  min?: number; max?: number; unit?: string;
+  format?: (v: number) => string;
+  thresholds?: { value: number; label?: string; color?: string }[];
+}): string
+
+charts.stat(opts: ChartOptions & {
+  label: string;
+  value: number | string;
+  unit?: string;
+  delta?: number | string;
+  deltaFormat?: (v: number) => string;
+  trend?: "up" | "down" | "neutral";
+  sparkline?: number[] | Point[];
+  format?: (v: number) => string;
+}): string
+
+charts.heatmap(opts: ChartOptions & {
+  data: { x: string; y: string; value: number }[];
+  xLabels?: string[]; yLabels?: string[];
+  min?: number; max?: number;
+  format?: (v: number) => string;
+  showValues?: boolean;
+}): string
+
+charts.stateTimeline(opts: ChartOptions & {
+  rows: { label: string; intervals: { from: number; to: number; state: string; label?: string }[] }[];
+  states?: { state: string; label?: string; color?: string }[];
+  xAxis?: Pick<AxisOptions, "format" | "label">;
+  legend?: boolean;
+}): string
 ```
 
 ### Examples
@@ -971,6 +1014,27 @@ charts.bar({
 
 // Smooth sparkline with soft gradient area fill + min/max + last-point dots
 charts.sparkline({ data: weeklyVisitors, smooth: true, area: true, showMinMax: true, showLast: true });
+
+// Monitoring dashboard panels
+charts.gauge({
+  value: 72,
+  min: 0,
+  max: 100,
+  label: "CPU",
+  unit: "%",
+  thresholds: [
+    { value: 80, color: "#10b981" },
+    { value: 90, color: "#f59e0b" },
+    { value: 100, color: "#ef4444" },
+  ],
+});
+charts.barGauge({ data: [{ label: "Disk", value: 91, unit: "%" }] });
+charts.stat({ label: "Requests / min", value: 12482, delta: 8.4, sparkline: weeklyRequests });
+charts.heatmap({ data: [{ x: "12:00", y: "p95", value: 89 }], showValues: true });
+charts.stateTimeline({
+  rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }],
+  states: [{ state: "ok", label: "OK" }],
+});
 ```
 
 ### Styling
@@ -989,12 +1053,19 @@ Charts ship with embedded default CSS. Override via:
    and sparkline area gradients — set parent `color` for theming (dark mode "just works").
 4. Font is inherited from the surrounding HTML — the app's font auto-applies.
 
+Dashboard panel class families are intentionally semantic and styleable:
+`.stdlib-chart-gauge-*`, `.stdlib-chart-bar-gauge-*`, `.stdlib-chart-stat-*`,
+`.stdlib-chart-heatmap-*`, and `.stdlib-chart-state-*`.
+
 Pass `className` to scope per-instance styles.
 
 **Gotchas:**
 - All chart functions return SVG strings, not DOM nodes — caller injects via `innerHTML` or writes to disk.
 - Embedded `<style>` block lists `.stdlib-chart-series-N` rules BEFORE shape-specific rules so shape rules (`fill: none` on line, `stroke: white` on slice/point, `stroke: none` on legend label) win on specificity tie.
 - Empty data renders an empty-state SVG with `.stdlib-chart-empty-text` — except sparkline, which renders a stable-size empty SVG (no text, preserves inline layout).
+- Dashboard panels are intentionally static SVGs: `gauge`/`barGauge`/`stat` show reduced values, `heatmap` expects already-bucketed `{x,y,value}` cells, and `stateTimeline` expects explicit `{from,to,state}` intervals.
+- `gauge` renders threshold colors as non-overlapping arc-gradient segments: a faint full scale plus an opaque value arc up to the current value. `showNeedle` is opt-in and should usually stay false for compact dashboards.
+- For maximum app-level theming, omit fixed `thresholds[].color` values and use `--stdlib-chart-c1` ... `--stdlib-chart-c8`. Fixed threshold colors are emitted as SVG `stroke` attributes on the gauge/bar/state shapes and intentionally win over app CSS.
 - NaN / Infinity values are filtered, never crash.
 - `bar` with `scale: "log"` skips non-positive values silently (log can't represent zero / negatives).
 - Step plot (`step` option) takes precedence over `smooth` — they don't combine.

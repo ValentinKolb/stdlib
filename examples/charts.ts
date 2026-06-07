@@ -325,6 +325,123 @@ const cases: Case[] = [
     }),
   },
   {
+    name: "gauge",
+    title: "Gauge — radial KPI with thresholds",
+    svg: charts.gauge({
+      value: 72,
+      min: 0,
+      max: 100,
+      label: "CPU usage",
+      unit: "%",
+      thresholds: [
+        { value: 80, color: "#10b981" },
+        { value: 90, color: "#f59e0b" },
+        { value: 100, color: "#ef4444" },
+      ],
+      width: 300,
+      height: 190,
+    }),
+  },
+  {
+    name: "bar-gauge",
+    title: "Bar gauge — compact service metrics",
+    svg: charts.barGauge({
+      data: [
+        { label: "API latency", value: 63, unit: "ms", max: 120 },
+        { label: "DB connections", value: 82, unit: "%" },
+        { label: "Queue depth", value: 24, unit: "%" },
+        { label: "Disk usage", value: 91, unit: "%" },
+      ],
+      thresholds: [
+        { value: 70, color: "#10b981" },
+        { value: 88, color: "#f59e0b" },
+        { value: 100, color: "#ef4444" },
+      ],
+      width: 420,
+    }),
+  },
+  {
+    name: "stat",
+    title: "Stat — large value + delta + sparkline",
+    svg: charts.stat({
+      label: "Requests / min",
+      value: 12482,
+      delta: 8.4,
+      deltaFormat: (v) => `${v}%`,
+      sparkline: [8420, 9100, 9800, 10300, 9900, 11100, 11800, 11400, 12482],
+      width: 300,
+      height: 150,
+    }),
+  },
+  {
+    name: "heatmap",
+    title: "Heatmap — latency buckets over time",
+    svg: charts.heatmap({
+      data: [
+        { x: "00", y: "p95", value: 26 },
+        { x: "04", y: "p95", value: 34 },
+        { x: "08", y: "p95", value: 58 },
+        { x: "12", y: "p95", value: 89 },
+        { x: "16", y: "p95", value: 94 },
+        { x: "20", y: "p95", value: 42 },
+        { x: "00", y: "p75", value: 18 },
+        { x: "04", y: "p75", value: 22 },
+        { x: "08", y: "p75", value: 39 },
+        { x: "12", y: "p75", value: 62 },
+        { x: "16", y: "p75", value: 70 },
+        { x: "20", y: "p75", value: 27 },
+        { x: "00", y: "p50", value: 9 },
+        { x: "04", y: "p50", value: 12 },
+        { x: "08", y: "p50", value: 19 },
+        { x: "12", y: "p50", value: 34 },
+        { x: "16", y: "p50", value: 38 },
+        { x: "20", y: "p50", value: 14 },
+      ],
+      yLabels: ["p95", "p75", "p50"],
+      showValues: true,
+      width: 460,
+      height: 230,
+    }),
+  },
+  {
+    name: "state-timeline",
+    title: "State timeline — service health regions",
+    svg: charts.stateTimeline({
+      rows: [
+        {
+          label: "API",
+          intervals: [
+            { from: 0, to: 6, state: "ok" },
+            { from: 6, to: 8, state: "warn" },
+            { from: 8, to: 16, state: "ok" },
+            { from: 16, to: 18, state: "down" },
+            { from: 18, to: 24, state: "ok" },
+          ],
+        },
+        {
+          label: "Worker",
+          intervals: [
+            { from: 0, to: 14, state: "ok" },
+            { from: 14, to: 20, state: "warn" },
+            { from: 20, to: 24, state: "ok" },
+          ],
+        },
+        {
+          label: "DB",
+          intervals: [{ from: 0, to: 24, state: "ok" }],
+        },
+      ],
+      states: [
+        { state: "ok", label: "OK", color: "#10b981" },
+        { state: "warn", label: "Warn", color: "#f59e0b" },
+        { state: "down", label: "Down", color: "#ef4444" },
+      ],
+      xAxis: { label: "hours", format: (v) => `${v}:00` },
+      width: 560,
+      height: 190,
+    }),
+  },
+  {
     name: "histogram",
     title: "Histogram — gaussian sample (n=1000)",
     svg: charts.histogram({
@@ -371,7 +488,7 @@ const card = (c: Case): string => `
   </figure>`.trim();
 
 const themedSubset: Case[] = cases.filter((c) =>
-  ["line", "bar-multicolor", "donut", "scatter"].includes(c.name),
+  ["line", "bar-multicolor", "donut", "scatter", "gauge", "bar-gauge", "stat", "heatmap", "state-timeline"].includes(c.name),
 );
 
 const html = `<!DOCTYPE html>

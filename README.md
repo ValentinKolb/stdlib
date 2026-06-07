@@ -168,6 +168,13 @@ const trend = charts.sparkline({
   smooth: true, area: true, showMinMax: true, showLast: true,
 });
 
+// Dashboard panels for monitoring-style UIs
+const cpu = charts.gauge({ value: 72, min: 0, max: 100, label: "CPU", unit: "%" });
+const health = charts.stateTimeline({
+  rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }],
+  states: [{ state: "ok", label: "OK" }],
+});
+
 // Scientific scatter with error bars and linear-regression overlay
 const correlation = charts.scatter({
   series: [{ data: trials.map(t => ({ x: t.id, y: t.mean, errY: t.sd })) }],

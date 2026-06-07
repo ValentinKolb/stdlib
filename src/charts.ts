@@ -200,6 +200,31 @@ const DEFAULT_STYLES = `
 .stdlib-chart-legend-swatch { stroke: none; }
 .stdlib-chart-legend-label { font-size: 11px; font-weight: 400; fill: currentColor; stroke: none; }
 .stdlib-chart-empty-text { font-size: 11px; fill: currentColor; opacity: 0.5; }
+.stdlib-chart-gauge-track { stroke: currentColor; stroke-width: 10; opacity: 0.12; fill: none; stroke-linecap: round; }
+.stdlib-chart-gauge-fill { stroke-width: 10; fill: none; stroke-linecap: round; }
+.stdlib-chart-gauge-gradient-segment { stroke-width: 10; fill: none; stroke-linecap: butt; }
+.stdlib-chart-gauge-gradient-scale { opacity: 0.22; }
+.stdlib-chart-gauge-needle { stroke-width: 2; fill: none; stroke-linecap: round; }
+.stdlib-chart-gauge-hub { fill: currentColor; stroke: none; }
+.stdlib-chart-gauge-value { font-size: 28px; font-weight: 700; fill: currentColor; }
+.stdlib-chart-gauge-label { font-size: 12px; fill: currentColor; opacity: 0.72; }
+.stdlib-chart-gauge-unit { font-size: 11px; fill: currentColor; opacity: 0.6; }
+.stdlib-chart-bar-gauge-track { fill: currentColor; opacity: 0.1; }
+.stdlib-chart-bar-gauge-fill { stroke: none; }
+.stdlib-chart-bar-gauge-label { font-size: 11px; fill: currentColor; opacity: 0.75; }
+.stdlib-chart-bar-gauge-value { font-size: 11px; font-weight: 600; fill: currentColor; }
+.stdlib-chart-stat-label { font-size: 12px; fill: currentColor; opacity: 0.72; }
+.stdlib-chart-stat-value { font-size: 30px; font-weight: 700; fill: currentColor; }
+.stdlib-chart-stat-unit { font-size: 14px; font-weight: 600; fill: currentColor; opacity: 0.72; }
+.stdlib-chart-stat-delta { font-size: 12px; font-weight: 600; fill: currentColor; opacity: 0.72; }
+.stdlib-chart-stat-delta-up { fill: #10b981; opacity: 1; }
+.stdlib-chart-stat-delta-down { fill: #ef4444; opacity: 1; }
+.stdlib-chart-stat-sparkline { fill: none; stroke: currentColor; stroke-width: 1.6; opacity: 0.86; }
+.stdlib-chart-stat-sparkline-area { stroke: none; opacity: 0.18; }
+.stdlib-chart-heatmap-cell { stroke: white; stroke-width: 1; }
+.stdlib-chart-heatmap-label { font-size: 10px; fill: currentColor; opacity: 0.68; }
+.stdlib-chart-state-region { stroke: white; stroke-width: 1; }
+.stdlib-chart-state-label { font-size: 11px; fill: currentColor; opacity: 0.75; }
 `.trim();
 
 // ==========================
@@ -1011,6 +1036,154 @@ const fmt = (n: number): string => {
   // 2 decimals is enough for sub-pixel precision at typical sizes.
   const rounded = Math.round(n * 100) / 100;
   return Number.isInteger(rounded) ? `${rounded}` : `${rounded}`;
+};
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const normalizeMinMax = (min: number | undefined, max: number | undefined): [number, number] => {
+  const lo = Number.isFinite(min) ? min! : 0;
+  const hi = Number.isFinite(max) ? max! : 100;
+  return lo === hi ? [lo, lo + 1] : lo < hi ? [lo, hi] : [hi, lo];
+};
+
+const formatNumberValue = (
+  value: number,
+  format: ((value: number) => string) | undefined,
+  unit = "",
+): string => {
+  if (!Number.isFinite(value)) return "";
+  return `${format ? format(value) : fmt(value)}${unit}`;
+};
+
+const thresholdFillAttr = (
+  color: string | undefined,
+): string => color ? ` fill="${escapeXml(color)}"` : "";
+
+const thresholdStrokeAttr = (
+  color: string | undefined,
+): string => color ? ` stroke="${escapeXml(color)}"` : "";
+
+const polarPoint = (cx: number, cy: number, r: number, angleRad: number) => ({
+  x: cx + r * Math.cos(angleRad),
+  y: cy + r * Math.sin(angleRad),
+});
+
+const arcLinePathD = (
+  cx: number,
+  cy: number,
+  r: number,
+  a0: number,
+  a1: number,
+): string => {
+  const start = polarPoint(cx, cy, r, a0);
+  const end = polarPoint(cx, cy, r, a1);
+  const large = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
+  const sweep = a1 >= a0 ? 1 : 0;
+  return `M ${fmt(start.x)} ${fmt(start.y)} A ${fmt(r)} ${fmt(r)} 0 ${large} ${sweep} ${fmt(end.x)} ${fmt(end.y)}`;
+};
+
+type RgbColor = { r: number; g: number; b: number };
+
+const parseHexColor = (color: string): RgbColor | null => {
+  const short = /^#([0-9a-f]{3})$/i.exec(color);
+  if (short) {
+    const [r, g, b] = short[1]!.split("").map((c) => Number.parseInt(c + c, 16));
+    return { r: r!, g: g!, b: b! };
+  }
+  const long = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!long) return null;
+  const value = long[1]!;
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+};
+
+const hexColor = (color: RgbColor): string =>
+  `#${[color.r, color.g, color.b]
+    .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0"))
+    .join("")}`;
+
+const interpolateColor = (from: string, to: string, t: number): string => {
+  const a = parseHexColor(from);
+  const b = parseHexColor(to);
+  if (!a || !b) return t < 0.5 ? from : to;
+  return hexColor({
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+  });
+};
+
+const gaugeThresholdStops = (
+  thresholds: readonly Threshold[] | undefined,
+  min: number,
+  max: number,
+): Array<{ value: number; color: string }> => {
+  if (!thresholds || thresholds.length === 0) return [];
+  const sorted = [...thresholds]
+    .filter((t) => Number.isFinite(t.value))
+    .sort((a, b) => a.value - b.value);
+  if (sorted.length === 0) return [];
+  const colorFor = (threshold: Threshold, index: number) =>
+    threshold.color ?? `var(--stdlib-chart-c${(index % 8) + 1})`;
+  return [
+    { value: min, color: colorFor(sorted[0]!, 0) },
+    ...sorted.map((threshold, index) => ({
+      value: clamp(threshold.value, min, max),
+      color: colorFor(threshold, index),
+    })),
+  ];
+};
+
+const gaugeColorAt = (
+  stops: readonly { value: number; color: string }[],
+  value: number,
+): string => {
+  if (stops.length === 0) return "currentColor";
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1]!;
+    const next = stops[i]!;
+    if (value <= next.value) {
+      const t = next.value === prev.value ? 1 : clamp((value - prev.value) / (next.value - prev.value), 0, 1);
+      return interpolateColor(prev.color, next.color, t);
+    }
+  }
+  return stops[stops.length - 1]!.color;
+};
+
+const renderGaugeGradientSegments = (opts: {
+  stops: readonly { value: number; color: string }[];
+  min: number;
+  max: number;
+  cx: number;
+  cy: number;
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+  progress?: number;
+  className: string;
+}): string => {
+  if (opts.stops.length === 0) return "";
+  const segments = 72;
+  const maxProgress = opts.progress ?? 100;
+  const parts: string[] = [];
+  for (let i = 0; i < segments; i++) {
+    const p0 = (i / segments) * 100;
+    const p1 = Math.min(((i + 1) / segments) * 100, maxProgress);
+    if (p0 >= maxProgress || p1 <= p0) break;
+    const v0 = mapRange(p0, [0, 100], [opts.min, opts.max]);
+    const v1 = mapRange(p1, [0, 100], [opts.min, opts.max]);
+    const color = gaugeColorAt(opts.stops, (v0 + v1) / 2);
+    const a0 = mapRange(p0, [0, 100], [opts.startAngle, opts.endAngle]);
+    const a1 = mapRange(p1, [0, 100], [opts.startAngle, opts.endAngle]);
+    parts.push(
+      `<path class="${opts.className}" stroke="${escapeXml(color)}" d="${arcLinePathD(opts.cx, opts.cy, opts.radius, a0, a1)}"/>`,
+    );
+  }
+  return parts.join("");
 };
 
 // ==========================
@@ -2009,6 +2182,475 @@ export const boxplot = (opts: BoxPlotOptions): string => {
 };
 
 // ==========================
+// DASHBOARD PANELS
+// ==========================
+
+type Threshold = {
+  /** Inclusive upper bound for this threshold segment. */
+  value: number;
+  /** Optional label for legends or future consumers. */
+  label?: string;
+  /** Optional SVG color. When omitted, the series CSS variables are used. */
+  color?: string;
+};
+
+type GaugeOptions = ChartOptions & {
+  value: number;
+  min?: number;
+  max?: number;
+  label?: string;
+  unit?: string;
+  format?: (value: number) => string;
+  thresholds?: Threshold[];
+  showNeedle?: boolean;
+};
+
+type BarGaugeItem = {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  unit?: string;
+};
+
+type BarGaugeOptions = ChartOptions & {
+  data: BarGaugeItem[];
+  min?: number;
+  max?: number;
+  unit?: string;
+  format?: (value: number) => string;
+  thresholds?: Threshold[];
+};
+
+type StatOptions = ChartOptions & {
+  label: string;
+  value: number | string;
+  unit?: string;
+  delta?: number | string;
+  deltaFormat?: (value: number) => string;
+  trend?: "up" | "down" | "neutral";
+  sparkline?: number[] | Point[];
+  format?: (value: number) => string;
+};
+
+type HeatmapDatum = { x: string; y: string; value: number };
+
+type HeatmapOptions = ChartOptions & {
+  data: HeatmapDatum[];
+  xLabels?: string[];
+  yLabels?: string[];
+  min?: number;
+  max?: number;
+  format?: (value: number) => string;
+  showValues?: boolean;
+};
+
+type StateInterval = {
+  from: number;
+  to: number;
+  state: string;
+  label?: string;
+};
+
+type StateTimelineRow = {
+  label: string;
+  intervals: StateInterval[];
+};
+
+type StateStyle = {
+  state: string;
+  label?: string;
+  color?: string;
+};
+
+type StateTimelineOptions = ChartOptions & {
+  rows: StateTimelineRow[];
+  states?: StateStyle[];
+  xAxis?: Pick<AxisOptions, "format" | "label">;
+  legend?: boolean;
+};
+
+const thresholdIndexForValue = (
+  value: number,
+  thresholds: readonly Threshold[] | undefined,
+  min: number,
+  max: number,
+): number => {
+  if (!thresholds || thresholds.length === 0) return 0;
+  const sorted = [...thresholds]
+    .filter((t) => Number.isFinite(t.value))
+    .sort((a, b) => a.value - b.value);
+  const clamped = clamp(value, min, max);
+  const idx = sorted.findIndex((t) => clamped <= t.value);
+  return idx >= 0 ? idx : Math.max(0, sorted.length - 1);
+};
+
+const thresholdColorForIndex = (
+  thresholds: readonly Threshold[] | undefined,
+  index: number,
+): string | undefined => {
+  if (!thresholds || thresholds.length === 0) return undefined;
+  const sorted = [...thresholds]
+    .filter((t) => Number.isFinite(t.value))
+    .sort((a, b) => a.value - b.value);
+  return sorted[index]?.color;
+};
+
+/**
+ * Render a radial single-value gauge for KPI, quota, saturation, or SLO style
+ * dashboard panels.
+ */
+export const gauge = (opts: GaugeOptions): string => {
+  const width = opts.width ?? 260;
+  const height = opts.height ?? 180;
+  const [min, max] = normalizeMinMax(opts.min, opts.max);
+  const value = Number.isFinite(opts.value) ? opts.value : min;
+  const clamped = clamp(value, min, max);
+  const startAngle = (Math.PI * 5) / 6;
+  const endAngle = (Math.PI * 13) / 6;
+  const valueAngle = mapRange(clamped, [min, max], [startAngle, endAngle]);
+  const cx = width / 2;
+  const cy = height * 0.64;
+  const radius = Math.min(width * 0.34, height * 0.43);
+  const startPoint = polarPoint(cx, cy, radius, startAngle);
+  const endPoint = polarPoint(cx, cy, radius, endAngle);
+  const endpointLabelY = Math.min(height - 10, Math.max(cy + 32, startPoint.y + 16));
+  const progress = clamp(mapRange(clamped, [min, max], [0, 100]), 0, 100);
+  const gaugePath = arcLinePathD(cx, cy, radius, startAngle, endAngle);
+  const gradientStops = gaugeThresholdStops(opts.thresholds, min, max);
+  const thresholdIdx = thresholdIndexForValue(clamped, opts.thresholds, min, max);
+  const thresholdColor = thresholdColorForIndex(opts.thresholds, thresholdIdx);
+  const valueText = formatNumberValue(value, opts.format, opts.unit);
+  const label = opts.label ?? opts.title;
+  const fillStroke = gradientStops.length > 0
+    ? ` stroke="${escapeXml(gaugeColorAt(gradientStops, clamped))}"`
+    : thresholdStrokeAttr(thresholdColor);
+  const fillClass = gradientStops.length > 0 || thresholdColor
+    ? "stdlib-chart-gauge-fill"
+    : `stdlib-chart-gauge-fill stdlib-chart-series-${thresholdIdx % 8}`;
+  const body: string[] = [];
+
+  if (gradientStops.length > 0) {
+    body.push(
+      renderGaugeGradientSegments({
+        stops: gradientStops,
+        min,
+        max,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        className: "stdlib-chart-gauge-gradient-segment stdlib-chart-gauge-gradient-scale",
+      }),
+    );
+    body.push(
+      renderGaugeGradientSegments({
+        stops: gradientStops,
+        min,
+        max,
+        cx,
+        cy,
+        radius,
+        startAngle,
+        endAngle,
+        progress,
+        className: "stdlib-chart-gauge-gradient-segment",
+      }),
+    );
+  } else {
+    body.push(`<path class="stdlib-chart-gauge-track" d="${gaugePath}"/>`);
+    if (progress > 0) {
+      body.push(
+        `<path class="${fillClass}"${fillStroke} pathLength="100" stroke-dasharray="${fmt(progress)} 100" d="${gaugePath}"/>`,
+      );
+    }
+  }
+
+  if (opts.showNeedle) {
+    const tip = polarPoint(cx, cy, radius - 8, valueAngle);
+    const needleClass = thresholdColor || gradientStops.length > 0
+      ? "stdlib-chart-gauge-needle"
+      : `stdlib-chart-gauge-needle stdlib-chart-series-${thresholdIdx % 8}`;
+    body.push(
+      `<line class="${needleClass}"${fillStroke} x1="${fmt(cx)}" y1="${fmt(cy)}" x2="${fmt(tip.x)}" y2="${fmt(tip.y)}"/>`,
+    );
+    body.push(`<circle class="stdlib-chart-gauge-hub" cx="${fmt(cx)}" cy="${fmt(cy)}" r="3"/>`);
+  }
+
+  body.push(
+    `<text class="stdlib-chart-gauge-value" x="${fmt(cx)}" y="${fmt(cy - 2)}" text-anchor="middle">${escapeXml(valueText)}</text>`,
+  );
+  if (label) {
+    body.push(
+      `<text class="stdlib-chart-gauge-label" x="${fmt(cx)}" y="${fmt(cy + 20)}" text-anchor="middle">${escapeXml(label)}</text>`,
+    );
+  }
+  body.push(
+    `<text class="stdlib-chart-gauge-unit" x="${fmt(startPoint.x)}" y="${fmt(endpointLabelY)}" text-anchor="middle">${escapeXml(formatNumberValue(min, opts.format, opts.unit))}</text>`,
+  );
+  body.push(
+    `<text class="stdlib-chart-gauge-unit" x="${fmt(endPoint.x)}" y="${fmt(endpointLabelY)}" text-anchor="middle">${escapeXml(formatNumberValue(max, opts.format, opts.unit))}</text>`,
+  );
+
+  return svgRoot({ width, height, className: opts.className }, body.join(""));
+};
+
+/** Render compact horizontal bar gauges for multiple reduced metrics. */
+export const barGauge = (opts: BarGaugeOptions): string => {
+  const width = opts.width ?? 420;
+  const rowHeight = 28;
+  const top = opts.title || opts.subtitle ? 42 : 16;
+  const height = opts.height ?? Math.max(80, top + opts.data.length * rowHeight + 14);
+  const header = renderHeader(width, opts.title, opts.subtitle);
+  const body: string[] = [header.svg];
+  const labelW = Math.min(140, Math.max(74, width * 0.34));
+  const valueW = 56;
+  const trackX = labelW + 14;
+  const trackW = Math.max(24, width - trackX - valueW - 14);
+  const trackH = 10;
+  const data = opts.data.filter((d) => Number.isFinite(d.value));
+
+  if (data.length === 0) {
+    body.push(`<text class="stdlib-chart-empty-text" x="${fmt(width / 2)}" y="${fmt(height / 2)}" text-anchor="middle">No data</text>`);
+    return svgRoot({ width, height, className: opts.className }, body.join(""));
+  }
+
+  data.forEach((d, i) => {
+    const [min, max] = normalizeMinMax(d.min ?? opts.min, d.max ?? opts.max);
+    const pct = clamp((d.value - min) / (max - min), 0, 1);
+    const y = top + i * rowHeight;
+    const thresholdIdx = thresholdIndexForValue(d.value, opts.thresholds, min, max);
+    const thresholdColor = thresholdColorForIndex(opts.thresholds, thresholdIdx);
+    const unit = d.unit ?? opts.unit ?? "";
+    body.push(
+      `<text class="stdlib-chart-bar-gauge-label" x="12" y="${fmt(y + 12)}" dominant-baseline="middle">${escapeXml(d.label)}</text>`,
+    );
+    body.push(
+      `<rect class="stdlib-chart-bar-gauge-track" x="${fmt(trackX)}" y="${fmt(y + 7)}" width="${fmt(trackW)}" height="${fmt(trackH)}" rx="2"/>`,
+    );
+    body.push(
+      `<rect class="stdlib-chart-bar-gauge-fill stdlib-chart-series-${thresholdIdx % 8}"${thresholdFillAttr(thresholdColor)} x="${fmt(trackX)}" y="${fmt(y + 7)}" width="${fmt(trackW * pct)}" height="${fmt(trackH)}" rx="2"/>`,
+    );
+    body.push(
+      `<text class="stdlib-chart-bar-gauge-value" x="${fmt(width - 12)}" y="${fmt(y + 12)}" text-anchor="end" dominant-baseline="middle">${escapeXml(formatNumberValue(d.value, opts.format, unit))}</text>`,
+    );
+  });
+
+  return svgRoot({ width, height, className: opts.className }, body.join(""));
+};
+
+const renderInlineSparkline = (
+  values: number[] | Point[] | undefined,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): string => {
+  if (!values || values.length < 2) return "";
+  const points = normalizeSparklineData(values);
+  if (points.length < 2) return "";
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const xDomain = computeDomain(xs);
+  const yDomain = computeDomain(ys);
+  const mapped = [...points]
+    .sort((a, b) => a.x - b.x)
+    .map((p) => ({
+      x: mapRange(p.x, xDomain, [x, x + width]),
+      y: mapRange(p.y, yDomain, [y + height, y]),
+    }));
+  const linePath = smoothPathD(mapped);
+  const first = mapped[0]!;
+  const last = mapped[mapped.length - 1]!;
+  const areaPath = `${linePath} L ${fmt(last.x)} ${fmt(y + height)} L ${fmt(first.x)} ${fmt(y + height)} Z`;
+  return (
+    `<path class="stdlib-chart-stat-sparkline-area" d="${areaPath}"/>` +
+    `<path class="stdlib-chart-stat-sparkline" d="${linePath}"/>`
+  );
+};
+
+/** Render a large value panel with optional delta and inline sparkline. */
+export const stat = (opts: StatOptions): string => {
+  const width = opts.width ?? 260;
+  const height = opts.height ?? 150;
+  const value =
+    typeof opts.value === "number"
+      ? formatNumberValue(opts.value, opts.format, opts.unit)
+      : `${opts.value}${opts.unit ?? ""}`;
+  const trend =
+    opts.trend ??
+    (typeof opts.delta === "number"
+      ? opts.delta > 0
+        ? "up"
+        : opts.delta < 0
+          ? "down"
+          : "neutral"
+      : "neutral");
+  const deltaText =
+    typeof opts.delta === "number"
+      ? `${opts.delta > 0 ? "+" : ""}${opts.deltaFormat ? opts.deltaFormat(opts.delta) : fmt(opts.delta)}`
+      : opts.delta;
+  const deltaClass =
+    trend === "up"
+      ? " stdlib-chart-stat-delta-up"
+      : trend === "down"
+        ? " stdlib-chart-stat-delta-down"
+        : "";
+  const body: string[] = [];
+  body.push(
+    `<text class="stdlib-chart-stat-label" x="16" y="24">${escapeXml(opts.label)}</text>`,
+  );
+  body.push(
+    `<text class="stdlib-chart-stat-value" x="16" y="70">${escapeXml(value)}</text>`,
+  );
+  if (deltaText !== undefined) {
+    body.push(
+      `<text class="stdlib-chart-stat-delta${deltaClass}" x="${fmt(width - 16)}" y="70" text-anchor="end">${escapeXml(String(deltaText))}</text>`,
+    );
+  }
+  body.push(renderInlineSparkline(opts.sparkline, 16, height - 42, width - 32, 26));
+  return svgRoot({ width, height, className: opts.className }, body.join(""));
+};
+
+/**
+ * Render a categorical two-dimensional heatmap. Cell opacity represents value
+ * intensity; labels are derived from first occurrence order unless provided.
+ */
+export const heatmap = (opts: HeatmapOptions): string => {
+  const width = opts.width ?? 460;
+  const height = opts.height ?? 260;
+  const padding = normalizePadding(opts.padding ?? { top: 36, right: 16, bottom: 32, left: 54 });
+  const header = renderHeader(width, opts.title, opts.subtitle);
+  const xLabels = opts.xLabels ?? [...new Set(opts.data.map((d) => d.x))];
+  const yLabels = opts.yLabels ?? [...new Set(opts.data.map((d) => d.y))];
+  if (xLabels.length === 0 || yLabels.length === 0) {
+    return svgRoot(
+      { width, height, className: opts.className },
+      header.svg + `<text class="stdlib-chart-empty-text" x="${fmt(width / 2)}" y="${fmt(height / 2)}" text-anchor="middle">No data</text>`,
+    );
+  }
+  const area = computePlotArea(width, height, padding, false, false, header.height, 0);
+  const values = opts.data.map((d) => d.value).filter(Number.isFinite);
+  const [autoMin, autoMax] = computeDomain(values);
+  const min = Number.isFinite(opts.min) ? opts.min! : autoMin;
+  const max = Number.isFinite(opts.max) ? opts.max! : autoMax;
+  const valueMap = new Map(opts.data.map((d) => [`${d.x}\u0000${d.y}`, d.value]));
+  const cellW = (area.x1 - area.x0) / xLabels.length;
+  const cellH = (area.y1 - area.y0) / yLabels.length;
+  const body: string[] = [header.svg];
+  const format = opts.format ?? ((v: number) => fmt(v));
+
+  xLabels.forEach((label, i) => {
+    const x = area.x0 + cellW * (i + 0.5);
+    body.push(
+      `<text class="stdlib-chart-heatmap-label" x="${fmt(x)}" y="${fmt(area.y1 + 14)}" text-anchor="middle">${escapeXml(label)}</text>`,
+    );
+  });
+  yLabels.forEach((label, i) => {
+    const y = area.y0 + cellH * (i + 0.5);
+    body.push(
+      `<text class="stdlib-chart-heatmap-label" x="${fmt(area.x0 - 8)}" y="${fmt(y)}" text-anchor="end" dominant-baseline="middle">${escapeXml(label)}</text>`,
+    );
+  });
+
+  for (let yi = 0; yi < yLabels.length; yi++) {
+    for (let xi = 0; xi < xLabels.length; xi++) {
+      const valueAtCell = valueMap.get(`${xLabels[xi]}\u0000${yLabels[yi]}`);
+      if (!Number.isFinite(valueAtCell)) continue;
+      const intensity = clamp(mapRange(valueAtCell!, [min, max], [0.12, 1]), 0.12, 1);
+      const x = area.x0 + xi * cellW;
+      const y = area.y0 + yi * cellH;
+      body.push(
+        `<rect class="stdlib-chart-heatmap-cell stdlib-chart-series-0" x="${fmt(x)}" y="${fmt(y)}" width="${fmt(Math.max(0, cellW - 1))}" height="${fmt(Math.max(0, cellH - 1))}" opacity="${fmt(intensity)}"/>`,
+      );
+      if (opts.showValues) {
+        body.push(
+          `<text class="stdlib-chart-heatmap-label" x="${fmt(x + cellW / 2)}" y="${fmt(y + cellH / 2)}" text-anchor="middle" dominant-baseline="middle">${escapeXml(format(valueAtCell!))}</text>`,
+        );
+      }
+    }
+  }
+
+  return svgRoot({ width, height, className: opts.className }, body.join(""));
+};
+
+/**
+ * Render state regions over a numeric timeline for services, jobs, deploys, or
+ * health checks.
+ */
+export const stateTimeline = (opts: StateTimelineOptions): string => {
+  const width = opts.width ?? 560;
+  const rowHeight = 24;
+  const legendItems =
+    opts.legend === false
+      ? []
+      : (opts.states ?? []).map((s, i) => ({ label: s.label ?? s.state, seriesIndex: i }));
+  const legendHeight = measureLegendHeight(legendItems, width);
+  const height = opts.height ?? Math.max(120, 56 + opts.rows.length * rowHeight + legendHeight);
+  const padding = normalizePadding(opts.padding ?? { top: 36, right: 16, bottom: 28, left: 74 });
+  const header = renderHeader(width, opts.title, opts.subtitle);
+  const allIntervals = opts.rows.flatMap((r) => r.intervals);
+  const timeValues = allIntervals.flatMap((i) => [i.from, i.to]).filter(Number.isFinite);
+  if (opts.rows.length === 0 || timeValues.length === 0) {
+    return svgRoot(
+      { width, height, className: opts.className },
+      header.svg + `<text class="stdlib-chart-empty-text" x="${fmt(width / 2)}" y="${fmt(height / 2)}" text-anchor="middle">No data</text>`,
+    );
+  }
+  const [minT, maxT] = computeDomain(timeValues);
+  const area = computePlotArea(width, height, padding, !!opts.xAxis?.label, false, header.height, legendHeight);
+  const stateKeys = opts.states?.map((s) => s.state) ?? [...new Set(allIntervals.map((i) => i.state))];
+  const stateStyles = new Map((opts.states ?? []).map((s, i) => [s.state, { ...s, index: i }]));
+  const stateIndex = (state: string) => {
+    const explicit = stateStyles.get(state)?.index;
+    if (explicit !== undefined) return explicit;
+    const idx = stateKeys.indexOf(state);
+    return idx >= 0 ? idx : 0;
+  };
+  const body: string[] = [header.svg];
+  const format = opts.xAxis?.format ?? ((v: number) => fmt(v));
+  const ticks = extendDomainToNice(minT, maxT, niceStep(maxT - minT, 4)).ticks.slice(0, 6);
+
+  opts.rows.forEach((row, rowIdx) => {
+    const y = area.y0 + rowIdx * rowHeight;
+    body.push(
+      `<text class="stdlib-chart-state-label" x="${fmt(area.x0 - 8)}" y="${fmt(y + rowHeight / 2)}" text-anchor="end" dominant-baseline="middle">${escapeXml(row.label)}</text>`,
+    );
+    for (const interval of row.intervals) {
+      if (!Number.isFinite(interval.from) || !Number.isFinite(interval.to)) continue;
+      const from = clamp(Math.min(interval.from, interval.to), minT, maxT);
+      const to = clamp(Math.max(interval.from, interval.to), minT, maxT);
+      const x = mapRange(from, [minT, maxT], [area.x0, area.x1]);
+      const x2 = mapRange(to, [minT, maxT], [area.x0, area.x1]);
+      const idx = stateIndex(interval.state);
+      const color = stateStyles.get(interval.state)?.color;
+      body.push(
+        `<rect class="stdlib-chart-state-region stdlib-chart-series-${idx % 8}"${thresholdFillAttr(color)} x="${fmt(x)}" y="${fmt(y + 3)}" width="${fmt(Math.max(1, x2 - x))}" height="${fmt(rowHeight - 6)}" rx="2"/>`,
+      );
+    }
+  });
+
+  for (const tick of ticks) {
+    if (tick < minT || tick > maxT) continue;
+    const x = mapRange(tick, [minT, maxT], [area.x0, area.x1]);
+    body.push(
+      `<text class="stdlib-chart-heatmap-label" x="${fmt(x)}" y="${fmt(area.y1 + 15)}" text-anchor="middle">${escapeXml(format(tick))}</text>`,
+    );
+  }
+  if (opts.xAxis?.label) {
+    body.push(
+      `<text class="stdlib-chart-axis-label" x="${fmt((area.x0 + area.x1) / 2)}" y="${fmt(height - legendHeight - 4)}" text-anchor="middle">${escapeXml(opts.xAxis.label)}</text>`,
+    );
+  }
+  if (legendItems.length > 0) {
+    body.push(renderLegend(legendItems, width, height - legendHeight).svg);
+  }
+
+  return svgRoot({ width, height, className: opts.className }, body.join(""));
+};
+
+// ==========================
 // SPARKLINE
 // ==========================
 
@@ -2183,4 +2825,9 @@ export const charts = {
   sparkline,
   histogram,
   boxplot,
+  gauge,
+  barGauge,
+  stat,
+  heatmap,
+  stateTimeline,
 } as const;
