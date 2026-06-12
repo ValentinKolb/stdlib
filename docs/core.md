@@ -447,12 +447,15 @@ renderFormula(`IF $price > 10 THEN "ok"`);
 
 highlight.presets.shell(`if [ "$USER" ]; then # hi`);
 highlight.presets.code(`const x = "ok"; // hi`);
+highlight.presets.sql(`SELECT id FROM users WHERE email = $1`);
 ```
 
 `highlight.compile` returns a reusable highlighter. Create it once and call the
 returned function during editor input events. Rule order is priority: at each
 cursor position the first matching rule wins, so put comments and strings
-before keywords.
+before keywords. The built-in SQL preset is shallow and dependency-free: it
+highlights common comments, strings, quoted identifiers, parameters, numbers,
+keywords, functions, and operators without attempting dialect-specific parsing.
 
 ## charts
 

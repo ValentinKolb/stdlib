@@ -100,7 +100,7 @@ sub-paths.
 | Find the closest typo correction in a list of choices | `fuzzy.distance`, `fuzzy.closest` | core |
 | Render safe headless markdown/editor highlight HTML | `highlight.markdown`, `highlight.overlay` | core |
 | Build a reusable highlighter for a formula, command, query, or DSL | `highlight.compile` | core |
-| Highlight shallow shell or code snippets without parser dependencies | `highlight.presets.shell`, `highlight.presets.code` | core |
+| Highlight shallow shell, code, or SQL snippets without parser dependencies | `highlight.presets.shell`, `highlight.presets.code`, `highlight.presets.sql` | core |
 | Generate SVG charts (scatter, line, bar, pie, donut, histogram, box plot) with titles, references, legends, error bars, log scale, trend lines | `charts.scatter/line/bar/pie/donut/histogram/boxplot` | core |
 | Generate styleable SVG dashboard panels (gauge, bar gauge, stat, heatmap, state timeline) for monitoring UIs | `charts.gauge/barGauge/stat/heatmap/stateTimeline` | core |
 | Generate a minimalist inline sparkline (smooth stroke, optional gradient area fill, min/max, last-point dots) | `charts.sparkline` | core |

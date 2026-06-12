@@ -774,6 +774,7 @@ highlight.compile(
 
 highlight.presets.shell(text: string): string
 highlight.presets.code(text: string): string
+highlight.presets.sql(text: string): string
 ```
 
 ### Examples
@@ -812,11 +813,13 @@ renderFormula(`IF $price > 10 THEN "ok" # comment`);
 // Shallow dependency-free presets.
 highlight.presets.shell(`if [ "$USER" ]; then # hi`);
 highlight.presets.code(`const x = "ok"; // hi`);
+highlight.presets.sql(`SELECT id FROM users WHERE email = $1`);
 ```
 
 **Gotchas:**
 - `highlight.markdown` is a Cloud-compatible editor highlighter, not a full Markdown renderer. It keeps syntax characters visible for textarea overlay alignment.
 - `highlight.compile` is intentionally shallow. It does ordered regex token wrapping, not AST parsing.
+- `highlight.presets.sql` is also shallow and dialect-neutral. It covers common comments, strings, quoted identifiers, parameters (`$1`, `:name`, `@name`, `?`), numbers, keywords, functions, and operators, but does not parse SQL semantics or nested dialect features.
 - Rule order is priority. Put broad protected constructs such as comments and strings before keywords.
 - Compile custom highlighters once and reuse the returned function during editor input renders.
 - All raw input is HTML-escaped before wrapping, so the returned string is safe to use with `innerHTML` when the rules are trusted code.

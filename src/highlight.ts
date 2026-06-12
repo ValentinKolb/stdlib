@@ -124,6 +124,22 @@ const shellHighlighter = compileHighlighter([
   { kind: "operator", match: /&&|\|\||;;|[|&;()<>]/ },
 ]);
 
+const sqlHighlighter = compileHighlighter([
+  { kind: "comment", match: /\/\*[\s\S]*?\*\// },
+  { kind: "comment", match: /--[^\n]*/ },
+  { kind: "string", match: /'(?:''|\\[\s\S]|[^'\\])*'/ },
+  { kind: "identifier", match: /"(?:\\[\s\S]|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\[[^\]\n]+\]/ },
+  { kind: "parameter", match: /\$(?:\d+|[a-zA-Z_][a-zA-Z0-9_]*)|:[a-zA-Z_][a-zA-Z0-9_]*|@[a-zA-Z_][a-zA-Z0-9_]*|\?(?!\?)/ },
+  { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
+  {
+    kind: "keyword",
+    match:
+      /\b(?:add|all|alter|and|as|asc|between|by|case|check|constraint|create|cross|default|delete|desc|distinct|drop|else|end|exists|false|foreign|from|full|group|having|in|inner|insert|intersect|into|is|join|key|left|like|limit|null|not|offset|on|or|order|outer|primary|references|returning|right|select|set|table|then|true|union|unique|update|values|when|where|with)\b/i,
+  },
+  { kind: "function", match: /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/ },
+  { kind: "operator", match: /<>|!=|<=|>=|->>|->|::|\|\||[=<>+\-*/%,.;()]/ },
+]);
+
 // Private Use Area chars for markdown sanctuary placeholders.
 const PH_OPEN = String.fromCharCode(0xe000);
 const PH_CLOSE = String.fromCharCode(0xe001);
@@ -340,5 +356,6 @@ export const highlight = {
   presets: {
     shell: shellHighlighter,
     code: codeHighlighter,
+    sql: sqlHighlighter,
   },
 } as const;

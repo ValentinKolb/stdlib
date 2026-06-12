@@ -143,6 +143,9 @@ const renderFormula = highlight.compile([
   { kind: "number", match: /\b\d+(?:\.\d+)?\b/ },
   { kind: "operator", match: /[+\-*/=<>!]+/ },
 ]);
+
+// Shallow presets for common snippets.
+highlight.presets.sql(`SELECT id FROM users WHERE email = $1`);
 ```
 
 ### Dashboard with Inline SVG Charts

@@ -194,6 +194,25 @@ describe("highlight.presets", () => {
     expect(html).toContain(`<span class="hl-keyword">then</span>`);
     expect(html).toContain(`<span class="hl-comment"># hi</span>`);
   });
+
+  it("provides a shallow SQL highlighter", () => {
+    const html = highlight.presets.sql(
+      `SELECT count(*) FROM "users" WHERE email = $1 AND status = 'active' -- only active`,
+    );
+    expect(html).toContain(`<span class="hl-keyword">SELECT</span>`);
+    expect(html).toContain(`<span class="hl-function">count</span>`);
+    expect(html).toContain(`<span class="hl-identifier">&quot;users&quot;</span>`);
+    expect(html).toContain(`<span class="hl-parameter">$1</span>`);
+    expect(html).toContain(`<span class="hl-string">&#39;active&#39;</span>`);
+    expect(html).toContain(`<span class="hl-comment">-- only active</span>`);
+  });
+
+  it("keeps SQL keywords inside strings and comments protected", () => {
+    const html = highlight.presets.sql(`SELECT 'FROM users' -- WHERE id = 1`);
+    expect(count(html, `class="hl-keyword"`)).toBe(1);
+    expect(html).toContain(`<span class="hl-string">&#39;FROM users&#39;</span>`);
+    expect(html).toContain(`<span class="hl-comment">-- WHERE id = 1</span>`);
+  });
 });
 
 // =====================================================================
@@ -209,6 +228,6 @@ describe("highlight namespace", () => {
       "overlay",
       "presets",
     ]);
-    expect(Object.keys(highlight.presets).sort()).toEqual(["code", "shell"]);
+    expect(Object.keys(highlight.presets).sort()).toEqual(["code", "shell", "sql"]);
   });
 });
