@@ -1,198 +1,144 @@
 ---
 name: stdlib
 description: >
-  Use this skill whenever code imports from @valentinkolb/stdlib or when the
-  user needs help choosing the right utility module for encoding, crypto, dates,
-  files, images, caching, storage, SolidJS primitives, or any general-purpose
-  TypeScript utility. Trigger broadly: any mention of hashing, encryption, UUIDs,
-  ULIDs, sortable IDs, QR
-  codes, file downloads, image processing, drag-and-drop, hotkeys, clipboard,
-  cookies, localStorage, notifications, search params, timing, text formatting,
-  syntax highlighting, markdown editor overlays, domain-specific language
-  highlighting, calendars, gradients, file icons, SVG avatars, result types, or
-  password generation should activate this skill.
+  Use this skill whenever code imports from @valentinkolb/stdlib,
+  @valentinkolb/stdlib/browser, @valentinkolb/stdlib/solid, or
+  @valentinkolb/stdlib/qr, and whenever the user needs help choosing,
+  using, documenting, testing, or updating stdlib utilities. Trigger broadly
+  for encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
+  passwords, dates, calendars, timing, streaming, Result errors, caching,
+  search params, text formatting, fuzzy matching, syntax highlighting,
+  markdown/editor overlays, custom DSL highlighting, charts, dashboard SVGs,
+  sparklines, QR codes, file icons, gradients, SVG avatars, browser file
+  downloads, ZIP archives, file pickers, OPFS, image processing, cookies,
+  clipboard, notifications, browser kvStore, theme toggling, SolidJS
+  mutations, hotkeys, drag-and-drop, localStorage sync, click-outside,
+  dropzones, accessibility helpers, or stdlib release/doc/skill updates.
 ---
 
-# @valentinkolb/stdlib -- Overview & Module Picker
+# @valentinkolb/stdlib
 
-`@valentinkolb/stdlib` is a zero-dependency-on-each-other collection of
-TypeScript utility modules organized into three entry points. Every module
-exports a namespace object (e.g. `crypto`, `images`, `cache`) so you can
-tree-shake what you don't use. The library targets both browser and
-server/Bun runtimes; browser-only and SolidJS-only modules live in dedicated
-sub-paths.
+This is the single entry skill for all `@valentinkolb/stdlib` work. Keep this
+file as the router and load detailed references only when the task needs them.
+
+## Start Here
+
+1. Identify the import path or runtime from the user's request.
+2. Read the matching reference file before changing code or giving API-specific
+   advice.
+3. Prefer the existing namespace-object API style (`crypto.common.ulid()`,
+   `charts.sparkline()`, `files.downloadFileFromContent()`,
+   `mutation.create()`).
+4. For repo changes, verify with the narrowest relevant tests first, then run
+   broader checks only when the change touches shared behavior.
 
 ## Entry Points
 
-| Import path | Runtime | Modules |
+| Import path | Runtime | Read when |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal (browser + server) | `encoding`, `crypto`, `password`, `dates`, `fileicons`, `gradients`, `result`, `svg`, `timing`, `streaming`, `text`, `fuzzy`, `highlight`, `charts`, `searchParams`, `cache` |
-| `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr` peer) | `qr` -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
-| `@valentinkolb/stdlib/browser` | Browser only (DOM required) | `images`, `files`, `cookies`, `clipboard`, `notifications`, `kvStore`, `theme` |
-| `@valentinkolb/stdlib/solid` | SolidJS components | `mutation`, `timed`, `hotkeys`, `dnd`, `detailPanel`, `localStore`, `clipboard`, `clickOutside`, `dropzone`, `a11y` |
+| `@valentinkolb/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, text, result, cache |
+| `@valentinkolb/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
+| `@valentinkolb/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
+| `@valentinkolb/stdlib/solid` | SolidJS reactive owner required | Mutations, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
 
-## Which module do I need?
+## Reference Routing
 
-### Crypto & Security
-| I need to... | Module | Entry point |
-|---|---|---|
-| Hash a string (SHA-256) | `crypto.common.hash` | core |
-| Hash synchronously (non-crypto) | `crypto.common.fnv1aHash` | core |
-| Generate a UUID | `crypto.common.uuid` | core |
-| Generate a sortable ULID | `crypto.common.ulid` | core |
-| Generate a readable ID | `crypto.common.readableId` | core |
-| Generate a symmetric key | `crypto.common.generateKey` | core |
-| Generate a random/memorable/PIN password | `password.random/memorable/pin` | core |
-| Analyse password strength | `password.strength` | core |
-| Sign/verify with ECDSA (asymmetric) | `crypto.asymmetric.sign/verify` | core |
-| Encrypt/decrypt with ECDH+AES-GCM (asymmetric) | `crypto.asymmetric.encrypt/decrypt` | core |
-| Generate an asymmetric key pair | `crypto.asymmetric.generate` | core |
-| Encrypt/decrypt with AES-GCM (symmetric, password or key) | `crypto.symmetric.encrypt/decrypt` | core |
-| Set up TOTP (2FA) | `crypto.totp.create/verify` | core |
+Load exactly the files needed for the task:
 
-### Encoding
-| I need to... | Module | Entry point |
-|---|---|---|
-| Convert bytes to/from Base64, Hex, or Base32 | `encoding.toBase64/fromBase64/toHex/fromHex/toBase32/fromBase32` | core |
-| Strictly validate Base64 input (untrusted sources) | `encoding.fromBase64Strict` | core |
-| Encode/decode numbers as Base62 (URL-safe) | `encoding.toBase62/fromBase62` | core |
+| Need | Reference |
+|---|---|
+| Complete root API: encoding, crypto, password, dates, timing, streaming, text, fuzzy, highlight, charts, cache, result, QR, SVG, searchParams, fileIcons, gradients | `references/core.md` |
+| Browser API: files, images, cookies, clipboard, notifications, kvStore, theme | `references/browser.md` |
+| SolidJS API: mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y | `references/solid.md` |
+| Crypto/security usage decisions, ULID caveats, symmetric/asymmetric/TOTP guidance | `references/core-crypto-guide.md` |
+| Cross-module core recipes | `references/core-patterns.md` |
+| Browser image pipeline details | `references/browser-images-guide.md` |
+| Browser kvStore architecture and patterns | `references/browser-kvstore-guide.md` |
+| SolidJS lifecycle and integration patterns | `references/solid-patterns.md` |
+| Upgrade/migration checks for consumer codebases | `references/migrate.md` |
+| Common task recipes across stdlib modules | `references/recipes.md` |
 
-### Data & Error Handling
-| I need to... | Module | Entry point |
-|---|---|---|
-| Return typed success/error results | `ok()`, `fail()`, `err.*`, `unwrap()`, `tryCatch()` | core (`result`) |
-| Paginate query results | `paginate()`, `okMany()` | core (`result`) |
+For broad module-selection questions, this file may be enough. For concrete API
+usage, read the matching detailed reference first.
 
-### Streaming
-| I need to... | Module | Entry point |
-|---|---|---|
-| Parse Server-Sent Events (SSE) from a stream | `streaming.parseSSE` | core |
-| Parse newline-delimited JSON (NDJSON) from a stream | `streaming.parseNDJSON` | core |
+## Module Picker
 
-### Dates, Time & Scheduling
-| I need to... | Module | Entry point |
-|---|---|---|
-| Validate or normalize a user's IANA timezone | `dates.isValidTimeZone/normalizeTimeZone` | core |
-| Format dates (`"05 Mar 2025"`) with optional IANA timezone support | `dates.formatDate/formatDateTime` | core |
-| Convert a timezone-local `datetime-local` value to a stored UTC instant | `dates.zonedDateTimeToInstant` | core |
-| Convert a stored UTC instant to a `datetime-local` input value | `dates.instantToZonedInput` | core |
-| Show relative time (`"3 mins ago"`) | `dates.formatDateTimeRelative` | core |
-| Format durations | `dates.formatDuration` | core |
-| Read calendar day keys, today, day bounds, and same-day checks in a named timezone | `dates.formatDateKey/today/startOfDay/endOfDay/isSameDay` | core |
-| Build calendar month/week grids and ranges in local time or a named timezone | `dates.getMonthGrid/getWeekDays/getDateRange` | core |
-| Add days/weeks/months/years while preserving timezone-local wall-clock time across DST | `dates.addZoned/addZonedInstant` | core |
-| Sleep / add jitter / random numbers | `timing.sleep/jitter/random/shuffle` | core |
-| Buffer writes (coalesce by key) | `timing.buffer` | core |
-| Enforce minimum load time | `timing.withMinLoadTime` | core |
-| Debounce a function (plain JS) | `timing.debounce` | core |
-| Throttle a function (plain JS) | `timing.throttle` | core |
-| Debounce/interval (SolidJS reactive) | `timed.debounce/interval` | solid |
+### Core
 
-### Text & Display
-| I need to... | Module | Entry point |
-|---|---|---|
-| Slugify a string | `text.slugify` | core |
-| Humanize/titleify a string | `text.humanize/titleify` | core |
-| Truncate or summarize a string | `text.truncate/summarize` | core |
-| Convert between camelCase/snake_case/kebab-case/PascalCase | `text.camelCase/snakeCase/kebabCase/pascalCase` | core |
-| Pretty-print byte sizes (IEC/SI, locale-aware, value/unit split) | `text.pprintBytes`, `text.pprintBytesParts` | core |
-| Fuzzy-match a query against a string (UI search, command palette) | `fuzzy.match`, `fuzzy.filter`, `fuzzy.segments` | core |
-| Find the closest typo correction in a list of choices | `fuzzy.distance`, `fuzzy.closest` | core |
-| Render safe headless markdown/editor highlight HTML | `highlight.markdown`, `highlight.overlay` | core |
-| Build a reusable highlighter for a formula, command, query, or DSL | `highlight.compile` | core |
-| Highlight shallow shell, code, or SQL snippets without parser dependencies | `highlight.presets.shell`, `highlight.presets.code`, `highlight.presets.sql` | core |
-| Generate SVG charts (scatter, line, bar, pie, donut, histogram, box plot) with titles, references, legends, error bars, log scale, trend lines | `charts.scatter/line/bar/pie/donut/histogram/boxplot` | core |
-| Generate styleable SVG dashboard panels (gauge, bar gauge, stat, heatmap, state timeline) for monitoring UIs | `charts.gauge/barGauge/stat/heatmap/stateTimeline` | core |
-| Generate a minimalist inline sparkline (smooth stroke, optional gradient area fill, min/max, last-point dots) | `charts.sparkline` | core |
-| Get a file icon/category | `fileicons.getFileCategory/getFileIcon` | core |
-| Get gradient presets for names | `gradients.gradientPresets` | core |
+| User needs | Module |
+|---|---|
+| Base64, Hex, Base32, Base62 | `encoding` |
+| SHA-256, FNV-1a, UUID, ULID, readable IDs, keys | `crypto.common` |
+| ECDSA/ECDH key pairs, signing, asymmetric encryption | `crypto.asymmetric` |
+| AES-256-GCM encryption, password/key based encryption | `crypto.symmetric` |
+| TOTP setup and verification | `crypto.totp` |
+| Random, memorable, or PIN passwords; strength checks | `password` |
+| Timezones, relative time, durations, calendar grids, date ranges | `dates` |
+| Sleep, jitter, shuffle, buffer, debounce, throttle | `timing` |
+| SSE or NDJSON stream parsing | `streaming` |
+| Slugs, casing, humanize, truncate, byte formatting | `text` |
+| Fuzzy match/filter/segments/closest typo correction | `fuzzy` |
+| Headless markdown/editor/custom syntax highlighting | `highlight` |
+| Scatter, line, bar, pie, donut, histogram, boxplot, sparkline, gauge, bar gauge, stat, heatmap, state timeline SVGs | `charts` |
+| In-memory TTL cache with optional lazy `onMiss` | `cache` |
+| Typed success/error service results | `result`, `ok`, `fail`, `err`, `unwrap`, `tryCatch` |
+| QR payloads and QR SVG rendering | `qr` from `@valentinkolb/stdlib/qr` |
+| Avatar SVGs and WebP data URL parsing | `svg` |
+| URL search param serialization/deserialization/change listeners | `searchParams` |
+| File icon/category lookup | `fileIcons` |
+| CSS gradient presets | `gradients` |
 
-### QR Codes & SVG
-| I need to... | Module | Entry point |
-|---|---|---|
-| Generate a QR code for WiFi/email/phone/vCard/event | `qr.wifi/email/tel/vcard/event` | core |
-| Render a QR code as SVG | `qr.toSvg` | core |
-| Generate a deterministic avatar SVG | `svg.generateAvatar` | core |
-| Parse a WebP data URL | `svg.parseWebpDataUrl` | core |
+### Browser
 
-### Caching
-| I need to... | Module | Entry point |
-|---|---|---|
-| Cache values in memory with TTL | `cache.create` | core |
-| Auto-fetch on cache miss | `cache.create({ onMiss })` | core |
+| User needs | Module |
+|---|---|
+| Download files, build ZIPs, open file/folder dialogs, MIME checks, OPFS files | `files` |
+| Resize, crop, filter, rotate, flip, export, and batch-process images | `images` |
+| Read/write string or JSON cookies | `cookies` |
+| Copy text to the clipboard | `clipboard` |
+| Native browser notification permission and display | `notifications` |
+| OPFS-backed persistent key-value storage with cross-tab sync | `kvStore` |
+| Light/dark mode state with cookie persistence | `theme` |
 
-### URL & Search Params
-| I need to... | Module | Entry point |
-|---|---|---|
-| Serialize/deserialize URL search params | `searchParams.serialize/deserialize` | core |
-| React to URL param changes | `searchParams.onChange` | core |
+### Solid
 
-### Browser -- Files & Downloads
-| I need to... | Module | Entry point |
-|---|---|---|
-| Download a file from content | `files.downloadFileFromContent` | browser |
-| Create/download a ZIP archive | `files.createZip/downloadAsZip` | browser |
-| Open a file/folder picker dialog | `files.showFileDialog/showFolderDialog` | browser |
-| Build safe file paths | `` files.path`uploads/${name}` `` | browser |
-| Check MIME types | `files.checkMimeType/mimeTypesToAccept` | browser |
-| Look up MIME type from filename or extension | `files.getMimeType` | browser |
-| Look up extension from MIME type | `files.getExtension` | browser |
-| Read/write to Origin Private File System | `files.OPFS.write/read/delete/ls` | browser |
+| User needs | Module |
+|---|---|
+| Async mutation controller with loading/error/abort/retry | `mutation` |
+| Lifecycle-aware debounce and interval timers | `timed` |
+| Global keyboard shortcut registry | `hotkeys` |
+| Pointer and keyboard drag-and-drop | `dnd` |
+| URL-synced detail panel with browser history | `detailPanel` |
+| Reactive localStorage with cross-tab sync | `localStore` |
+| Reactive clipboard copy feedback | `clipboard` |
+| Click-outside detection | `clickOutside` |
+| File drop zone with MIME validation | `dropzone` |
+| Accessible click-or-enter handlers | `a11y` |
 
-### Browser -- Images
-| I need to... | Module | Entry point |
-|---|---|---|
-| Load and process images (resize, crop, filter, rotate, flip) | `images.create/resize/crop/filter/rotate/flip` | browser |
-| Export as Blob/File/Base64/Canvas | `images.toBlob/toFile/toBase64/toCanvas` | browser |
-| Batch-process images with progress | `images.batch` | browser |
-| Quick avatar/thumbnail presets | `images.presets.avatar/thumbnail` | browser |
+## Repo Workflow
 
-### Browser -- Storage & State
-| I need to... | Module | Entry point |
-|---|---|---|
-| Store large/binary data persistently (OPFS-backed) | `kvStore.set/get/setBytes/getBytes` | browser |
-| Watch for kvStore changes (cross-tab) | `kvStore.watch` | browser |
-| Tear down kvStore state (tests / explicit shutdown) | `kvStore.destroy` | browser |
-| Read/write cookies (raw or JSON) | `cookies.readCookie/writeCookie/readJsonCookie/writeJsonCookie` | browser |
-| Copy text to clipboard | `clipboard.copy` | browser |
-| Show native notifications | `notifications.show/requestPermission` | browser |
-| Toggle light/dark mode | `theme.toggle/set/getCurrent` | browser |
+- Read source before changing docs or skill references. The references should
+  describe the current code, not desired behavior.
+- Keep package docs, examples, and this skill in sync when adding or changing
+  public APIs.
+- Keep browser-only and SolidJS-only utilities on their subpath entry points.
+- Avoid introducing external dependencies unless the module already depends on
+  them or the user explicitly accepts the tradeoff.
+- Preserve headless utilities: core SVG/highlight/chart helpers should not
+  inject CSS or themes unless the API explicitly accepts style options.
 
-### SolidJS Primitives
-| I need to... | Module | Entry point |
-|---|---|---|
-| Reactive localStorage with cross-tab sync | `localStore.create/query` | solid |
-| Async mutation with loading/error/abort/retry | `mutation.create` | solid |
-| Drag and drop (pointer + keyboard) | `dnd.create` | solid |
-| Global keyboard shortcuts | `hotkeys.create/entries` | solid |
-| File drop zone | `dropzone.create` | solid |
-| Click-outside detection | `clickOutside.create` | solid |
-| Reactive clipboard with copy feedback | `clipboard.create` | solid |
-| Hybrid SSR detail panel | `detailPanel.create` | solid |
-| Debounce / interval (lifecycle-aware) | `timed.debounce/interval` | solid |
-| Make non-buttons accessible | `a11y.clickOrEnter` | solid |
+## Validation
 
-## Cross-Cutting Patterns
+Choose verification proportional to the change:
 
-- **Namespace objects** -- every module exports a namespace (`crypto`, `images`, `cache`, etc.) with its functions as methods. Individual functions are also available as named exports for direct import.
-- **Tree-shaking split** -- `password` is a separate module from `crypto` so that importing `crypto` does not pull in the 5KB EFF wordlist used by `password.memorable`.
-- **Functional pipelines** -- `images` uses a `.then()` chaining pattern where each transform returns a function `(ImgData | Promise<ImgData>) => Promise<T>`.
-- **Result types** -- use `result.tryCatch` to wrap any async operation; combine with `result.ok/fail/err.*` for typed error handling across the stack.
-- **TTL caching + lazy loading** -- `cache.create({ onMiss, beforePurge })` lets you build transparent caching layers around any data source.
-- **Cross-tab sync** -- both `kvStore` (via BroadcastChannel) and `localStore` (via BroadcastChannel) keep data synchronized across browser tabs automatically.
+| Change | Check |
+|---|---|
+| Skill/reference-only update | Validate the skill folder and grep for stale skill names/paths |
+| Core API change | Targeted `bun test` for the module, then package typecheck |
+| Browser utility change | Browser/runtime tests where available plus typecheck |
+| Solid primitive change | Solid-specific tests plus typecheck |
+| Public API or release prep | Docs/README/examples/skills updated, `git diff --check`, package tests/typecheck |
 
-## Detailed API Reference
-
-For full API documentation on each entry point, read the specific skill:
-
-- **`stdlib-core`** -- encoding, crypto, password, result, dates, qr, svg, text, fuzzy, highlight, timing, streaming, cache, searchParams, fileicons, gradients
-- **`stdlib-browser`** -- images, files, cookies, clipboard, notifications, kvStore, theme
-- **`stdlib-solid`** -- localStore, mutation, dnd, hotkeys, dropzone, clickOutside, clipboard, detailPanel, timed, a11y
-
-## Upgrading
-
-When upgrading the installed `@valentinkolb/stdlib` version in a consumer
-codebase, read `references/migrate.md` for the per-version checklist of
-what to grep for and how to update affected call sites. The migration guide
-is organized chronologically — work through each section from your current
-version forward.
+For this skill itself, the expected installed shape is one discoverable
+`stdlib` skill with detailed files under `references/`; do not reintroduce
+separate `stdlib-core`, `stdlib-browser`, or `stdlib-solid` skills.

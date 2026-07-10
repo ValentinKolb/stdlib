@@ -1,26 +1,3 @@
----
-name: stdlib-core
-description: >
-  ALWAYS use when code imports from "@valentinkolb/stdlib" or when the user needs
-  encoding (Base64/Hex/Base32/Base62), hashing (SHA-256, FNV-1a), UUID/ULID
-  generation, readable IDs, cryptography (asymmetric
-  ECDSA+ECDH key pairs, symmetric AES-256-GCM encryption, TOTP two-factor auth),
-  password generation and strength analysis (random, memorable, PIN, strength), date/time formatting (UTC defaults,
-  IANA timezone support, relative time, durations, time spans), calendar utilities (month/week grids,
-  date range calculation, item filtering, navigation helpers), timing helpers
-  (sleep, buffer, jitter, random, shuffle, withMinLoadTime, debounce, throttle),
-  streaming (SSE parsing, NDJSON parsing), text manipulation
-  (slugify, humanize, titleify, pprintBytes, truncate, summarize, camelCase,
-  snakeCase, kebabCase, pascalCase), fuzzy matching, headless syntax
-  highlighting for markdown/editor overlays/custom DSLs, in-memory TTL caching with lazy
-  loading, Result/ServiceError types for service layer error handling, QR code
-  generation (WiFi, email, tel, vCard, calendar events, SVG rendering),
-  SVG avatar generation, WebP data URL parsing, URL search parameter
-  serialization/deserialization, file icon/category lookup, or CSS gradient
-  presets. This skill contains the COMPLETE API reference for every function
-  in the @valentinkolb/stdlib core package.
----
-
 # @valentinkolb/stdlib -- Core Modules
 
 All imports come from the root entrypoint:

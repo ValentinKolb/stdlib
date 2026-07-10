@@ -1,12 +1,4 @@
----
-name: stdlib-solid
-description: |
-  SolidJS reactive primitives from @valentinkolb/stdlib/solid.
-  Covers: mutation (async mutation controller with loading/error/abort/retry), timed (debounce and interval with auto-cleanup), hotkeys (global keyboard shortcut registry with Mac symbol support), dnd (drag-and-drop with pointer+keyboard, ghost elements, collision detection, ARIA live regions), detailPanel (URL-synced detail panel with browser history), localStore (reactive localStorage with cross-tab BroadcastChannel sync), clipboard (reactive copy-to-clipboard with timeout indicator), clickOutside (click-outside detection), dropzone (file drop zone with MIME validation), a11y (clickOrEnter accessibility handler).
-  Trigger when: code imports from "@valentinkolb/stdlib/solid", or when building SolidJS apps needing async mutations, keyboard shortcuts/hotkeys, drag-and-drop, reactive localStorage, debounce/interval timers, clipboard copy feedback, click-outside detection, file drop zones, or accessibility helpers.
----
-
-# stdlib-solid -- SolidJS Reactive Primitives
+# @valentinkolb/stdlib/solid -- SolidJS Reactive Primitives
 
 All primitives are imported from a single entry point:
 
