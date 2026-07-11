@@ -559,6 +559,22 @@ describe("charts.bar", () => {
 // =====================================================================
 
 describe("charts.pie", () => {
+  it("uses rounded stroke joins so narrow slices do not create center spikes", () => {
+    const svg = pie({
+      data: [
+        { label: "Big", value: 79 },
+        { label: "Small A", value: 9 },
+        { label: "Small B", value: 4.2 },
+        { label: "Small C", value: 3.7 },
+        { label: "Small D", value: 2.3 },
+        { label: "Small E", value: 1.5 },
+      ],
+    });
+    expect(svg).toContain(
+      ".stdlib-chart-slice { stroke: white; stroke-width: 2; stroke-linejoin: round; }",
+    );
+  });
+
   it("renders one path per slice", () => {
     const svg = pie({
       data: [

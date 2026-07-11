@@ -216,7 +216,7 @@ const DEFAULT_STYLES = `
 .stdlib-chart-sparkline-max { fill: #10b981; stroke: none; }
 .stdlib-chart-sparkline-min { fill: #ef4444; stroke: none; }
 .stdlib-chart-point { stroke: white; stroke-width: 1.5; }
-.stdlib-chart-slice { stroke: white; stroke-width: 2; }
+.stdlib-chart-slice { stroke: white; stroke-width: 2; stroke-linejoin: round; }
 .stdlib-chart-label { font-size: 11px; fill: currentColor; }
 .stdlib-chart-bar-value { font-size: 10px; fill: currentColor; opacity: 0.8; }
 .stdlib-chart-errorbar { stroke: currentColor; opacity: 0.55; fill: none; stroke-width: 1; }
