@@ -79,7 +79,7 @@ usage, read the matching detailed reference first.
 | Slugs, casing, humanize, truncate, byte formatting | `text` |
 | Fuzzy match/filter/segments/closest typo correction | `fuzzy` |
 | Headless markdown/editor/custom syntax highlighting | `highlight` |
-| Scatter, line, bar, pie, donut, histogram, boxplot, sparkline, gauge, bar gauge, stat, heatmap, state timeline SVGs | `charts` |
+| Scatter, line, bar, pie, donut, histogram, boxplot, sparkline, gauge, bar gauge, stat, heatmap, world map, state timeline SVGs | `charts` |
 | In-memory TTL cache with optional lazy `onMiss` | `cache` |
 | Typed success/error service results | `result`, `ok`, `fail`, `err`, `unwrap`, `tryCatch` |
 | QR payloads and QR SVG rendering | `qr` from `@valentinkolb/stdlib/qr` |

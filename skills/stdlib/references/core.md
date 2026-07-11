@@ -807,7 +807,7 @@ highlight.presets.sql(`SELECT id FROM users WHERE email = $1`);
 
 SVG chart generators for plots and dashboard panels: scatter, line, bar, pie,
 donut, sparkline, histogram, boxplot, gauge, barGauge, stat, heatmap,
-stateTimeline. All return SVG strings — inject into the DOM, write to disk, or
+map, stateTimeline. All return SVG strings — inject into the DOM, write to disk, or
 send over the wire. Pure native, no peer dependencies. Stylable via CSS classes
 and CSS custom properties.
 
@@ -827,6 +827,11 @@ type Series = {
   marker?: MarkerShape;          // scatter point shape
   lineStyle?: LineStyle;          // line dash pattern
 };
+type MapPoint = {
+  latitude: number; longitude: number;
+  label?: string; size?: number;
+};
+type MapSeries = { label?: string; data: MapPoint[] };
 type BarItem = { label: string; value: number };
 type SliceItem = { label: string; value: number };
 type ReferenceLine = { value: number; axis?: "x" | "y"; label?: string };
@@ -933,6 +938,12 @@ charts.heatmap(opts: ChartOptions & {
   showValues?: boolean;
 }): string
 
+charts.map(opts: ChartOptions & {
+  series: MapSeries[];
+  sizeRange?: [number, number];
+  legend?: boolean;
+}): string
+
 charts.stateTimeline(opts: ChartOptions & {
   rows: { label: string; intervals: { from: number; to: number; state: string; label?: string }[] }[];
   states?: { state: string; label?: string; color?: string }[];
@@ -1011,6 +1022,14 @@ charts.gauge({
 charts.barGauge({ data: [{ label: "Disk", value: 91, unit: "%" }] });
 charts.stat({ label: "Requests / min", value: 12482, delta: 8.4, sparkline: weeklyRequests });
 charts.heatmap({ data: [{ x: "12:00", y: "p95", value: 89 }], showValues: true });
+charts.map({
+  series: [{
+    label: "Healthy",
+    data: [{ latitude: 52.52, longitude: 13.405, label: "Berlin", size: 128 }],
+  }],
+  sizeRange: [3, 11],
+  legend: true,
+});
 charts.stateTimeline({
   rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }],
   states: [{ state: "ok", label: "OK" }],
@@ -1030,12 +1049,12 @@ Charts ship with embedded default CSS. Override via:
    .stdlib-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
    ```
 3. `currentColor` for axes, tick labels, error bars, references, sparklines,
-   and sparkline area gradients — set parent `color` for theming (dark mode "just works").
+   map land, and sparkline area gradients — set parent `color` for theming (dark mode "just works").
 4. Font is inherited from the surrounding HTML — the app's font auto-applies.
 
 Dashboard panel class families are intentionally semantic and styleable:
 `.stdlib-chart-gauge-*`, `.stdlib-chart-bar-gauge-*`, `.stdlib-chart-stat-*`,
-`.stdlib-chart-heatmap-*`, and `.stdlib-chart-state-*`.
+`.stdlib-chart-heatmap-*`, `.stdlib-chart-map-*`, and `.stdlib-chart-state-*`.
 
 Pass `className` to scope per-instance styles.
 
@@ -1044,6 +1063,7 @@ Pass `className` to scope per-instance styles.
 - Embedded `<style>` block lists `.stdlib-chart-series-N` rules BEFORE shape-specific rules so shape rules (`fill: none` on line, `stroke: white` on slice/point, `stroke: none` on legend label) win on specificity tie.
 - Empty data renders an empty-state SVG with `.stdlib-chart-empty-text` — except sparkline, which renders a stable-size empty SVG (no text, preserves inline layout).
 - Dashboard panels are intentionally static SVGs: `gauge`/`barGauge`/`stat` show reduced values, `heatmap` expects already-bucketed `{x,y,value}` cells, and `stateTimeline` expects explicit `{from,to,state}` intervals.
+- `map` uses an embedded, simplified Natural Earth 1:110m world land path without Antarctica and an equirectangular projection. It filters out-of-range coordinates, escapes labels into SVG `<title>` elements, and leaves clustering or aggregation to the caller.
 - `gauge` renders threshold colors as non-overlapping arc-gradient segments: a faint full scale plus an opaque value arc up to the current value. `showNeedle` is opt-in and should usually stay false for compact dashboards.
 - For maximum app-level theming, omit fixed `thresholds[].color` values and use `--stdlib-chart-c1` ... `--stdlib-chart-c8`. Fixed threshold colors are emitted as SVG `stroke` attributes on the gauge/bar/state shapes and intentionally win over app CSS.
 - NaN / Infinity values are filtered, never crash.

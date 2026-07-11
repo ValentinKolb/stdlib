@@ -13,6 +13,7 @@ import {
   barGauge,
   stat,
   heatmap,
+  map,
   stateTimeline,
   // helpers
   escapeXml,
@@ -1736,6 +1737,77 @@ describe("charts.heatmap", () => {
   });
 });
 
+describe("charts.map", () => {
+  it("renders the world land path and one point per valid coordinate", () => {
+    const svg = map({
+      series: [
+        {
+          label: "Healthy",
+          data: [
+            { latitude: 52.52, longitude: 13.405, label: "Berlin" },
+            { latitude: 40.7128, longitude: -74.006, label: "New York" },
+          ],
+        },
+      ],
+    });
+    expect(svg).toContain('class="stdlib-chart-map-land"');
+    expect(count(svg, '<circle class="stdlib-chart-map-point')).toBe(2);
+    expect(svg).toContain("<title>Berlin</title>");
+    expect(svg).toContain("<title>New York</title>");
+  });
+
+  it("uses series colors, scales finite sizes, and renders a legend", () => {
+    const svg = map({
+      series: [
+        { label: "Healthy", data: [{ latitude: 0, longitude: 0, size: 10 }] },
+        { label: "Down", data: [{ latitude: 10, longitude: 10, size: 100 }] },
+      ],
+      sizeRange: [2, 10],
+      legend: true,
+    });
+    expect(svg).toContain('stdlib-chart-map-point stdlib-chart-series-0');
+    expect(svg).toContain('stdlib-chart-map-point stdlib-chart-series-1');
+    expect(svg).toContain('r="2"');
+    expect(svg).toContain('r="10"');
+    expect(svg).toContain(">Healthy<");
+    expect(svg).toContain(">Down<");
+  });
+
+  it("filters invalid coordinates while keeping the map and empty state", () => {
+    const svg = map({
+      series: [
+        {
+          data: [
+            { latitude: 91, longitude: 0 },
+            { latitude: 0, longitude: -181 },
+            { latitude: NaN, longitude: 0 },
+          ],
+        },
+      ],
+    });
+    expect(svg).toContain('class="stdlib-chart-map-land"');
+    expect(svg).not.toContain('<circle class="stdlib-chart-map-point');
+    expect(svg).toContain("No data");
+  });
+
+  it("escapes point labels and normalizes a reversed size range", () => {
+    const svg = map({
+      series: [
+        {
+          data: [
+            { latitude: 0, longitude: 0, size: 1, label: '<node id="1">' },
+            { latitude: 1, longitude: 1, size: 2 },
+          ],
+        },
+      ],
+      sizeRange: [9, 3],
+    });
+    expect(svg).toContain("&lt;node id=&quot;1&quot;&gt;");
+    expect(svg).toContain('r="3"');
+    expect(svg).toContain('r="9"');
+  });
+});
+
 describe("charts.stateTimeline", () => {
   it("renders state regions for intervals", () => {
     const svg = stateTimeline({
@@ -1779,6 +1851,7 @@ describe("charts namespace", () => {
     expect(charts.barGauge).toBe(barGauge);
     expect(charts.stat).toBe(stat);
     expect(charts.heatmap).toBe(heatmap);
+    expect(charts.map).toBe(map);
     expect(charts.stateTimeline).toBe(stateTimeline);
   });
 });

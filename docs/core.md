@@ -462,7 +462,7 @@ keywords, functions, and operators without attempting dialect-specific parsing.
 SVG chart generators covering the basic shapes, dashboard panels, and the
 features most useful for scientific publication: `scatter`, `line`, `bar`,
 `pie`, `donut`, `sparkline`, `histogram`, `boxplot`, `gauge`, `barGauge`,
-`stat`, `heatmap`, `stateTimeline`. Returns SVG strings —
+`stat`, `heatmap`, `map`, `stateTimeline`. Returns SVG strings —
 inject into the DOM, write to disk, or send over the wire. Pure native, no
 peer dependencies.
 
@@ -481,6 +481,7 @@ charts.gauge({ value: 72, min: 0, max: 100, label: "CPU", unit: "%" });
 charts.barGauge({ data: [{ label: "Disk", value: 91, unit: "%" }] });
 charts.stat({ label: "Requests / min", value: 12482, delta: 8.4, sparkline: [...] });
 charts.heatmap({ data: [{ x: "12:00", y: "p95", value: 89 }] });
+charts.map({ series: [{ data: [{ latitude: 52.52, longitude: 13.405 }] }] });
 charts.stateTimeline({ rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }] });
 ```
 
@@ -623,6 +624,36 @@ charts.boxplot({
 });
 ```
 
+### World map: geographic point series
+
+```ts
+charts.map({
+  title: "Edge network health",
+  series: [
+    {
+      label: "Healthy",
+      data: [
+        { latitude: 52.52, longitude: 13.405, label: "Berlin", size: 128 },
+        { latitude: 40.7128, longitude: -74.006, label: "New York", size: 82 },
+      ],
+    },
+    {
+      label: "Degraded",
+      data: [{ latitude: 1.3521, longitude: 103.8198, label: "Singapore" }],
+    },
+  ],
+  sizeRange: [3, 11],
+  legend: true,
+});
+```
+
+The built-in, simplified world land geometry is derived from the public-domain
+Natural Earth 1:110m dataset, omits Antarctica, and is embedded directly in the module. Map points
+outside latitude `-90..90` or longitude `-180..180` are ignored. Point labels
+become escaped SVG `<title>` elements. The renderer does not cluster or
+aggregate overlapping coordinates; pre-aggregate data and use `size` when the
+magnitude should control the bubble radius.
+
 ### Common options (`ChartOptions`)
 
 | option | default | notes |
@@ -644,13 +675,14 @@ Charts ship with embedded default CSS. Override via:
    ```css
    .stdlib-chart-line { stroke-width: 3; }
    .stdlib-chart-bar  { rx: 4; }
+   .stdlib-chart-map-land { opacity: 0.2; }
    ```
 2. **CSS custom properties** for the 8 default series colors:
    ```css
    .my-chart { --stdlib-chart-c1: #f43f5e; --stdlib-chart-c2: #f97316; }
    ```
 3. **`currentColor`** is used for axes, tick labels, error bars, references,
-   sparklines, and sparkline area gradients — set the parent's `color` for
+   sparklines, map land, and sparkline area gradients — set the parent's `color` for
    theming (dark mode "just works").
 4. The chart's font is **inherited from the surrounding HTML** — the app's
    font automatically applies.

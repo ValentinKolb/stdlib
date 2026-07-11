@@ -177,6 +177,13 @@ const health = charts.stateTimeline({
   rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }],
   states: [{ state: "ok", label: "OK" }],
 });
+const regions = charts.map({
+  series: [{
+    label: "Healthy",
+    data: [{ latitude: 52.52, longitude: 13.405, label: "Berlin" }],
+  }],
+  legend: true,
+});
 
 // Scientific scatter with error bars and linear-regression overlay
 const correlation = charts.scatter({

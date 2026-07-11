@@ -404,6 +404,88 @@ const cases: Case[] = [
     }),
   },
   {
+    name: "map-status",
+    title: "Map — global service health by region",
+    svg: charts.map({
+      title: "Edge network health",
+      subtitle: "Live regions",
+      series: [
+        {
+          label: "Healthy",
+          data: [
+            { latitude: 37.7749, longitude: -122.4194, label: "San Francisco" },
+            { latitude: 40.7128, longitude: -74.006, label: "New York" },
+            { latitude: -23.5505, longitude: -46.6333, label: "São Paulo" },
+            { latitude: 52.52, longitude: 13.405, label: "Berlin" },
+            { latitude: 1.3521, longitude: 103.8198, label: "Singapore" },
+            { latitude: -33.8688, longitude: 151.2093, label: "Sydney" },
+          ],
+        },
+        {
+          label: "Degraded",
+          data: [
+            { latitude: 19.4326, longitude: -99.1332, label: "Mexico City" },
+            { latitude: -1.2921, longitude: 36.8219, label: "Nairobi" },
+            { latitude: 35.6762, longitude: 139.6503, label: "Tokyo" },
+          ],
+        },
+        {
+          label: "Down",
+          data: [
+            { latitude: 25.2048, longitude: 55.2708, label: "Dubai" },
+          ],
+        },
+      ],
+      legend: true,
+      width: 640,
+      height: 350,
+    }),
+  },
+  {
+    name: "map-volume",
+    title: "Map — traffic volume encoded as bubble size",
+    svg: charts.map({
+      title: "Requests by point of presence",
+      series: [
+        {
+          label: "Requests",
+          data: [
+            { latitude: 47.6062, longitude: -122.3321, label: "Seattle · 42k", size: 42 },
+            { latitude: 41.8781, longitude: -87.6298, label: "Chicago · 68k", size: 68 },
+            { latitude: 51.5072, longitude: -0.1276, label: "London · 112k", size: 112 },
+            { latitude: 50.1109, longitude: 8.6821, label: "Frankfurt · 146k", size: 146 },
+            { latitude: 19.076, longitude: 72.8777, label: "Mumbai · 91k", size: 91 },
+            { latitude: 22.3193, longitude: 114.1694, label: "Hong Kong · 74k", size: 74 },
+            { latitude: -33.9249, longitude: 18.4241, label: "Cape Town · 28k", size: 28 },
+            { latitude: -34.6037, longitude: -58.3816, label: "Buenos Aires · 35k", size: 35 },
+          ],
+        },
+      ],
+      sizeRange: [3, 13],
+      width: 640,
+      height: 320,
+    }),
+  },
+  {
+    name: "map-compact",
+    title: "Map — compact dashboard panel",
+    svg: charts.map({
+      series: [
+        {
+          data: [
+            { latitude: 59.3293, longitude: 18.0686, label: "Stockholm" },
+            { latitude: 48.8566, longitude: 2.3522, label: "Paris" },
+            { latitude: 31.2304, longitude: 121.4737, label: "Shanghai" },
+            { latitude: -37.8136, longitude: 144.9631, label: "Melbourne" },
+          ],
+        },
+      ],
+      width: 420,
+      height: 220,
+      className: "compact-map",
+    }),
+  },
+  {
     name: "state-timeline",
     title: "State timeline — service health regions",
     svg: charts.stateTimeline({
@@ -481,14 +563,14 @@ for (const c of cases) {
 
 // HTML --------------------------------------------------------------------
 
-const card = (c: Case): string => `
-  <figure>
+const card = (c: Case, idPrefix = ""): string => `
+  <figure id="${idPrefix}${c.name}">
     <figcaption>${c.title}</figcaption>
     <div class="svg-wrap">${c.svg}</div>
   </figure>`.trim();
 
 const themedSubset: Case[] = cases.filter((c) =>
-  ["line", "bar-multicolor", "donut", "scatter", "gauge", "bar-gauge", "stat", "heatmap", "state-timeline"].includes(c.name),
+  ["line", "bar-multicolor", "donut", "scatter", "gauge", "bar-gauge", "stat", "heatmap", "map-status", "map-volume", "state-timeline"].includes(c.name),
 );
 
 const html = `<!DOCTYPE html>
@@ -527,6 +609,7 @@ const html = `<!DOCTYPE html>
       text-transform: uppercase;
     }
     .svg-wrap svg { display: block; width: 100%; height: auto; }
+    .compact-map { --stdlib-chart-map-land-opacity: 0.2; }
     section.theme-dark {
       background: #111827;
       color: #f3f4f6;
@@ -557,14 +640,14 @@ const html = `<!DOCTYPE html>
   <p class="lead">Every chart type and feature in one grid. SVGs are inlined so theme overrides (currentColor, --stdlib-chart-c1..c8) apply.</p>
 
   <div class="grid">
-${cases.map(card).join("\n")}
+${cases.map((c) => card(c)).join("\n")}
   </div>
 
   <section class="theme-dark">
     <h2>Dark theme — parent sets <code>color: #f3f4f6</code></h2>
     <p class="lead" style="color: #9ca3af">Axes and tick labels use <code>currentColor</code>, so they pick up the parent's color.</p>
     <div class="grid">
-${themedSubset.map(card).join("\n")}
+${themedSubset.map((c) => card(c, "dark-")).join("\n")}
     </div>
   </section>
 
@@ -572,7 +655,7 @@ ${themedSubset.map(card).join("\n")}
     <h2>Custom palette — overridden <code>--stdlib-chart-c1</code> through <code>-c8</code></h2>
     <p class="lead">Sunset palette via CSS custom properties. No JS, no rebuild.</p>
     <div class="grid">
-${themedSubset.map(card).join("\n")}
+${themedSubset.map((c) => card(c, "custom-")).join("\n")}
     </div>
   </section>
 </body>
