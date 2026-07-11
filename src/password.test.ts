@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { PASSWORD_WORDS } from "./_password-words";
 import { password } from "./password";
 
 // ==========================
@@ -49,6 +50,12 @@ describe("password.random", () => {
 // ==========================
 
 describe("password.memorable", () => {
+  it("uses unique separator-safe dictionary words", () => {
+    expect(PASSWORD_WORDS).toHaveLength(1296);
+    expect(PASSWORD_WORDS.every((word) => /^[a-z]+$/.test(word))).toBe(true);
+    expect(new Set(PASSWORD_WORDS).size).toBe(PASSWORD_WORDS.length);
+  });
+
   it("generates 4 hyphen-separated words by default", () => {
     const parts = password.memorable().split("-");
     expect(parts.length).toBe(4);

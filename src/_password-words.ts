@@ -1294,7 +1294,7 @@ export const PASSWORD_WORDS: readonly string[] = [
   "yeast",
   "yelp",
   "yield",
-  "yo-yo",
+  "young",
   "yodel",
   "yoga",
   "yoyo",
