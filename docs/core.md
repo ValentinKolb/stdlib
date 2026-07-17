@@ -158,6 +158,11 @@ const nextStartsAt = dates.addZonedInstant(event.startsAt, {
 });
 ```
 
+Timezone conversion uses the runtime's IANA data, including non-hour and
+historical sub-minute offsets. `zonedDateTimeToInstant` rejects ambiguous and
+nonexistent wall-clock times by default; pass `disambiguation` only when
+choosing or shifting an occurrence is intentional.
+
 ## dates (calendar views)
 
 Calendar grids, date checks, navigation, and locale-aware formatting are all part of the `dates` module.

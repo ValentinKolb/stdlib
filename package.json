@@ -14,7 +14,8 @@
     "!src/_test-helpers.ts"
   ],
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "bench:dates": "bun benchmarks/dates.ts"
   },
   "exports": {
     ".": "./src/index.ts",

@@ -451,7 +451,7 @@ dates.addZonedInstant("2026-06-01T07:00:00.000Z", { timeZone: "Europe/Berlin", w
 - Date values are still instants. `timeZone` controls how those instants are read as civil calendar days.
 - Calendar ranges return Date instants for the start/end of the zoned civil range.
 - `zonedDateTimeToInstant` rejects nonexistent/ambiguous DST wall-clock values by default; pass `disambiguation` only when shifting or choosing an occurrence is intentional.
-- Formatting uses native `Intl.DateTimeFormat`; timezone arithmetic uses dayjs `utc` + `timezone`.
+- Formatting and exact IANA offset resolution use native `Intl.DateTimeFormat`; calendar arithmetic uses dayjs `utc` + `timezone`.
 
 ---
 

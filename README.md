@@ -249,6 +249,14 @@ docs/solid.md     -- mutation, hotkeys, dnd, timed, localstorage, ...
 import { qr } from "@valentinkolb/stdlib/qr";
 ```
 
+## Development
+
+```bash
+bun test
+bunx tsc --noEmit
+bun run bench:dates
+```
+
 ## Agent Skills
 
 ```bash

@@ -220,13 +220,78 @@ const parseWallClock = (input: string): WallClockParts => {
   return parts;
 };
 
-const wallClockKey = (parts: WallClockParts): string =>
-  `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}.${String(parts.millisecond).padStart(3, "0")}`;
+type WallClockTuple = [
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  millisecond: number,
+];
 
-const zonedWallClockKey = (instant: Date, timeZone: string): string => {
-  const d = dayjs(instant).tz(timeZone);
-  return `${d.year()}-${pad2(d.month() + 1)}-${pad2(d.date())}T${pad2(d.hour())}:${pad2(d.minute())}:${pad2(d.second())}.${String(d.millisecond()).padStart(3, "0")}`;
+const DAY_MS = 86_400_000;
+const zonedDateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
+
+const getZonedDateTimeFormatter = (timeZone: string): Intl.DateTimeFormat => {
+  const cached = zonedDateTimeFormatters.get(timeZone);
+  if (cached) return cached;
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    calendar: "iso8601",
+    numberingSystem: "latn",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    fractionalSecondDigits: 3,
+  });
+  zonedDateTimeFormatters.set(timeZone, formatter);
+  return formatter;
 };
+
+const wallClockTuple = (parts: WallClockParts): WallClockTuple => [
+  parts.year,
+  parts.month,
+  parts.day,
+  parts.hour,
+  parts.minute,
+  parts.second,
+  parts.millisecond,
+];
+
+const zonedWallClockTuple = (instantMs: number, timeZone: string): WallClockTuple => {
+  let year = 0;
+  let month = 0;
+  let day = 0;
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  let millisecond = 0;
+
+  for (const part of getZonedDateTimeFormatter(timeZone).formatToParts(new Date(instantMs))) {
+    const value = Number(part.value);
+    if (part.type === "year") year = value;
+    else if (part.type === "month") month = value;
+    else if (part.type === "day") day = value;
+    else if (part.type === "hour") hour = value;
+    else if (part.type === "minute") minute = value;
+    else if (part.type === "second") second = value;
+    else if (part.type === "fractionalSecond") millisecond = value;
+  }
+
+  return [year, month, day, hour, minute, second, millisecond];
+};
+
+const wallClockTupleToUtc = ([year, month, day, hour, minute, second, millisecond]: WallClockTuple): number =>
+  Date.UTC(year, month - 1, day, hour, minute, second, millisecond);
+
+const sameWallClock = (left: WallClockTuple, right: WallClockTuple): boolean =>
+  left.every((value, index) => value === right[index]);
 
 const wallClockToNaiveDayjs = (input: string): dayjs.Dayjs => {
   const parts = parseWallClock(input);
@@ -247,27 +312,22 @@ const applyZonedAdd = (input: string, options: ZonedAddOptions): string => {
 };
 
 const candidateInstantsForWallClock = (parts: WallClockParts, timeZone: string): Date[] => {
-  const expected = wallClockKey(parts);
-  const naiveUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-    parts.millisecond,
-  );
-  const seen = new Set<number>();
+  const expected = wallClockTuple(parts);
+  const naiveUtc = wallClockTupleToUtc(expected);
+  const offsets = new Set<number>();
   const candidates: Date[] = [];
 
-  // Current IANA offsets are quarter-hour aligned. Scanning possible offsets
-  // avoids depending on dayjs' chosen DST disambiguation.
-  for (let offset = -14 * 60; offset <= 14 * 60; offset += 15) {
-    const instantMs = naiveUtc - offset * 60_000;
-    if (seen.has(instantMs)) continue;
-    seen.add(instantMs);
-    const instant = new Date(instantMs);
-    if (zonedWallClockKey(instant, timeZone) === expected) candidates.push(instant);
+  // Every IANA offset is within one day of UTC. Sampling both sides finds the
+  // offsets around gaps and overlaps without scanning every possible offset.
+  for (const probe of [naiveUtc - DAY_MS, naiveUtc + DAY_MS]) {
+    offsets.add(wallClockTupleToUtc(zonedWallClockTuple(probe, timeZone)) - probe);
+  }
+
+  for (const offset of offsets) {
+    const instantMs = naiveUtc - offset;
+    if (sameWallClock(zonedWallClockTuple(instantMs, timeZone), expected)) {
+      candidates.push(new Date(instantMs));
+    }
   }
 
   return candidates.sort((a, b) => a.getTime() - b.getTime());
@@ -284,7 +344,7 @@ const validTimeZoneOrNull = (value: string | null | undefined): string | null =>
   const timeZone = typeof value === "string" ? value.trim() : "";
   try {
     if (!timeZone) return null;
-    new Intl.DateTimeFormat(undefined, { timeZone }).format(new Date(0));
+    getZonedDateTimeFormatter(timeZone);
     return timeZone;
   } catch {
     return null;
@@ -334,8 +394,15 @@ export const zonedDateTimeToInstant = (
  * Convert a UTC instant to a `datetime-local` input value in an IANA timezone.
  */
 export const instantToZonedInput = (input: string | Date, timeZone: string): string => {
-  const d = dayjs(asDate(input)).tz(normalizeTimeZone(timeZone));
-  return `${d.year()}-${pad2(d.month() + 1)}-${pad2(d.date())}T${pad2(d.hour())}:${pad2(d.minute())}`;
+  const date = asDate(input);
+  const zone = normalizeTimeZone(timeZone);
+  if (Number.isNaN(date.getTime())) {
+    const invalid = dayjs(date).tz(zone);
+    return `${invalid.year()}-${pad2(invalid.month() + 1)}-${pad2(invalid.date())}T${pad2(invalid.hour())}:${pad2(invalid.minute())}`;
+  }
+
+  const [year, month, day, hour, minute] = zonedWallClockTuple(date.getTime(), zone);
+  return `${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${pad2(minute)}`;
 };
 
 // =============================================================================
@@ -547,9 +614,10 @@ export const today = (context?: DateContext): Date => startOfDay(new Date(), con
 export const addZoned = (input: string, options: ZonedAddOptions): string => applyZonedAdd(input, options);
 
 export const addZonedInstant = (input: string | Date, options: ZonedAddOptions): string => {
-  const wallClock = instantToZonedInput(input, options.timeZone);
+  const timeZone = normalizeTimeZone(options.timeZone);
+  const wallClock = instantToZonedInput(input, timeZone);
   const next = addZoned(wallClock, options);
-  return zonedDateTimeToInstant(next, options.timeZone, { disambiguation: options.disambiguation });
+  return zonedDateTimeToInstant(next, timeZone, { disambiguation: options.disambiguation });
 };
 
 // =============================================================================

@@ -93,6 +93,9 @@ describe("timezone helpers", () => {
 
   it("converts timezone-local datetime-local values to UTC instants", () => {
     expect(zonedDateTimeToInstant("2026-06-01T09:00", "Europe/Berlin")).toBe("2026-06-01T07:00:00.000Z");
+    expect(zonedDateTimeToInstant("2026-06-01T09:00:12.345", "Europe/Berlin")).toBe(
+      "2026-06-01T07:00:12.345Z",
+    );
   });
 
   it("rejects nonexistent DST wall-clock values by default", () => {
@@ -107,6 +110,15 @@ describe("timezone helpers", () => {
     ).toBe("2026-03-29T01:30:00.000Z");
   });
 
+  it("preserves all disambiguation modes for nonexistent DST wall-clock values", () => {
+    expect(() =>
+      zonedDateTimeToInstant("2026-03-29T02:30", "Europe/Berlin", { disambiguation: "earlier" }),
+    ).toThrow(RangeError);
+    expect(zonedDateTimeToInstant("2026-03-29T02:30", "Europe/Berlin", { disambiguation: "later" })).toBe(
+      "2026-03-29T01:30:00.000Z",
+    );
+  });
+
   it("rejects ambiguous DST wall-clock values by default", () => {
     expect(() => zonedDateTimeToInstant("2026-10-25T02:30", "Europe/Berlin")).toThrow(RangeError);
   });
@@ -117,6 +129,46 @@ describe("timezone helpers", () => {
     );
     expect(zonedDateTimeToInstant("2026-10-25T02:30", "Europe/Berlin", { disambiguation: "later" })).toBe(
       "2026-10-25T01:30:00.000Z",
+    );
+    expect(zonedDateTimeToInstant("2026-10-25T02:30", "Europe/Berlin", { disambiguation: "compatible" })).toBe(
+      "2026-10-25T00:30:00.000Z",
+    );
+  });
+
+  it("handles half-hour DST transitions in Australia/Lord_Howe", () => {
+    expect(
+      zonedDateTimeToInstant("2026-04-05T01:45", "Australia/Lord_Howe", { disambiguation: "earlier" }),
+    ).toBe("2026-04-04T14:45:00.000Z");
+    expect(
+      zonedDateTimeToInstant("2026-04-05T01:45", "Australia/Lord_Howe", { disambiguation: "later" }),
+    ).toBe("2026-04-04T15:15:00.000Z");
+    expect(() => zonedDateTimeToInstant("2026-10-04T02:15", "Australia/Lord_Howe")).toThrow(RangeError);
+    expect(
+      zonedDateTimeToInstant("2026-10-04T02:15", "Australia/Lord_Howe", { disambiguation: "compatible" }),
+    ).toBe("2026-10-03T15:45:00.000Z");
+  });
+
+  it("handles quarter-hour IANA offsets", () => {
+    expect(zonedDateTimeToInstant("2026-06-01T09:00", "Asia/Kathmandu")).toBe("2026-06-01T03:15:00.000Z");
+    expect(zonedDateTimeToInstant("2026-06-01T09:00", "Pacific/Chatham")).toBe("2026-05-31T20:15:00.000Z");
+  });
+
+  it("handles historical sub-minute IANA offsets", () => {
+    expect(zonedDateTimeToInstant("1969-12-31T23:15:30", "Africa/Monrovia")).toBe(
+      "1970-01-01T00:00:00.000Z",
+    );
+  });
+
+  it("handles IANA transitions that skip an entire local date", () => {
+    expect(() => zonedDateTimeToInstant("2011-12-30T12:00", "Pacific/Apia")).toThrow(RangeError);
+    expect(() =>
+      zonedDateTimeToInstant("2011-12-30T12:00", "Pacific/Apia", { disambiguation: "earlier" }),
+    ).toThrow(RangeError);
+    expect(zonedDateTimeToInstant("2011-12-30T12:00", "Pacific/Apia", { disambiguation: "compatible" })).toBe(
+      "2011-12-30T22:00:00.000Z",
+    );
+    expect(zonedDateTimeToInstant("2011-12-30T12:00", "Pacific/Apia", { disambiguation: "later" })).toBe(
+      "2011-12-30T22:00:00.000Z",
     );
   });
 
@@ -656,6 +708,34 @@ describe("navigation", () => {
   it("adds zoned instant recurrence intervals while preserving wall-clock time", () => {
     expect(addZonedInstant("2026-03-23T08:00:00.000Z", { timeZone: "Europe/Berlin", weeks: 1 })).toBe(
       "2026-03-30T07:00:00.000Z",
+    );
+  });
+
+  it("applies disambiguation when zoned recurrence addition reaches a DST overlap", () => {
+    const input = "2026-10-24T00:30:00.000Z";
+    expect(() => addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1 })).toThrow(RangeError);
+    expect(
+      addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1, disambiguation: "compatible" }),
+    ).toBe("2026-10-25T00:30:00.000Z");
+    expect(addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1, disambiguation: "earlier" })).toBe(
+      "2026-10-25T00:30:00.000Z",
+    );
+    expect(addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1, disambiguation: "later" })).toBe(
+      "2026-10-25T01:30:00.000Z",
+    );
+  });
+
+  it("applies disambiguation when zoned recurrence addition reaches a DST gap", () => {
+    const input = "2026-03-28T01:30:00.000Z";
+    expect(() => addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1 })).toThrow(RangeError);
+    expect(() =>
+      addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1, disambiguation: "earlier" }),
+    ).toThrow(RangeError);
+    expect(
+      addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1, disambiguation: "compatible" }),
+    ).toBe("2026-03-29T01:30:00.000Z");
+    expect(addZonedInstant(input, { timeZone: "Europe/Berlin", days: 1, disambiguation: "later" })).toBe(
+      "2026-03-29T01:30:00.000Z",
     );
   });
 });
