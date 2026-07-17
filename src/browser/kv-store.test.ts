@@ -22,9 +22,12 @@ const mockOPFS = {
 
 // ─── Mock modules before import ─────────────────────────────────────────────────
 
+const actualFiles = await import("./files");
+
 mock.module("./files", () => ({
+  ...actualFiles,
   OPFS: mockOPFS,
-  files: { OPFS: mockOPFS },
+  files: { ...actualFiles.files, OPFS: mockOPFS },
 }));
 
 // Mock navigator.locks
