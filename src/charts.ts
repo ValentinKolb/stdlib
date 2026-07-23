@@ -86,8 +86,19 @@ export type MapSeries = {
   data: MapPoint[];
 };
 
+export type MapViewport = {
+  /** Latitude at the center of the viewport. */
+  latitude: number;
+  /** Longitude at the center of the viewport. */
+  longitude: number;
+  /** Zoom level from 0 (full world) to 5. Each level doubles the scale. */
+  zoom: number;
+};
+
 export type MapOptions = ChartOptions & {
   series: MapSeries[];
+  /** Deterministic map center and zoom. Values are normalized to the map bounds. */
+  viewport?: MapViewport;
   /** Pixel-radius range used when at least one finite `size` exists. */
   sizeRange?: [number, number];
   /** Render a series legend below the map. Default false. */
@@ -2621,6 +2632,34 @@ const isMapPoint = (point: MapPoint): boolean =>
   point.longitude >= -180 &&
   point.longitude <= 180;
 
+const MAP_MIN_ZOOM = 0;
+const MAP_MAX_ZOOM = 5;
+
+const normalizeMapViewport = (viewport: MapViewport | undefined): MapViewport => {
+  const zoom = clamp(
+    viewport && Number.isFinite(viewport.zoom) ? viewport.zoom : MAP_MIN_ZOOM,
+    MAP_MIN_ZOOM,
+    MAP_MAX_ZOOM,
+  );
+  const zoomScale = 2 ** zoom;
+  const latitudeLimit = 90 - 90 / zoomScale;
+  const longitudeLimit = 180 - 180 / zoomScale;
+
+  return {
+    latitude: clamp(
+      viewport && Number.isFinite(viewport.latitude) ? viewport.latitude : 0,
+      -latitudeLimit,
+      latitudeLimit,
+    ),
+    longitude: clamp(
+      viewport && Number.isFinite(viewport.longitude) ? viewport.longitude : 0,
+      -longitudeLimit,
+      longitudeLimit,
+    ),
+    zoom,
+  };
+};
+
 /** Render geographic point series over a dependency-free world land map. */
 export const map = (opts: MapOptions): string => {
   const width = opts.width ?? 640;
@@ -2660,6 +2699,11 @@ export const map = (opts: MapOptions): string => {
   const mapHeight = WORLD_MAP_HEIGHT * scale;
   const mapX = area.x0 + (availableWidth - mapWidth) / 2;
   const mapY = area.y0 + (availableHeight - mapHeight) / 2;
+  const viewport = normalizeMapViewport(opts.viewport);
+  const zoomScale = 2 ** viewport.zoom;
+  const projectedScale = scale * zoomScale;
+  const centerWorldX = ((viewport.longitude + 180) / 360) * WORLD_MAP_WIDTH;
+  const centerWorldY = ((90 - viewport.latitude) / 180) * WORLD_MAP_HEIGHT;
 
   const finitePoints = opts.series.flatMap((series, seriesIndex) =>
     series.data
@@ -2691,25 +2735,29 @@ export const map = (opts: MapOptions): string => {
   const body: string[] = [header.svg];
   if (scale > 0) {
     body.push(
-      `<path class="stdlib-chart-map-land" fill-rule="evenodd" transform="translate(${fmt(mapX)} ${fmt(mapY)}) scale(${fmt(scale)})" d="${WORLD_LAND_PATH}"/>`,
+      `<svg class="stdlib-chart-map-viewport" x="${fmt(mapX)}" y="${fmt(mapY)}" width="${fmt(mapWidth)}" height="${fmt(mapHeight)}" viewBox="0 0 ${fmt(mapWidth)} ${fmt(mapHeight)}" overflow="hidden">`,
+      `<path class="stdlib-chart-map-land" fill-rule="evenodd" transform="translate(${fmt(mapWidth / 2)} ${fmt(mapHeight / 2)}) scale(${fmt(projectedScale)}) translate(${fmt(-centerWorldX)} ${fmt(-centerWorldY)})" d="${WORLD_LAND_PATH}"/>`,
     );
-  }
 
-  for (const { point, seriesIndex } of finitePoints) {
-    const x = mapX + ((point.longitude + 180) / 360) * mapWidth;
-    const y = mapY + ((90 - point.latitude) / 180) * mapHeight;
-    const radius =
-      hasSizes && typeof point.size === "number" && Number.isFinite(point.size) && point.size >= 0
-        ? sizeMin === sizeMax
-          ? (radiusRange[0] + radiusRange[1]) / 2
-          : mapRange(point.size, [sizeMin, sizeMax], radiusRange)
-        : 4;
-    const title = point.label && point.label.length > 0
-      ? `<title>${escapeXml(point.label)}</title>`
-      : "";
-    body.push(
-      `<circle class="stdlib-chart-map-point stdlib-chart-series-${seriesIndex % 8}" cx="${fmt(x)}" cy="${fmt(y)}" r="${fmt(radius)}">${title}</circle>`,
-    );
+    for (const { point, seriesIndex } of finitePoints) {
+      const pointWorldX = ((point.longitude + 180) / 360) * WORLD_MAP_WIDTH;
+      const pointWorldY = ((90 - point.latitude) / 180) * WORLD_MAP_HEIGHT;
+      const x = mapWidth / 2 + (pointWorldX - centerWorldX) * projectedScale;
+      const y = mapHeight / 2 + (pointWorldY - centerWorldY) * projectedScale;
+      const radius =
+        hasSizes && typeof point.size === "number" && Number.isFinite(point.size) && point.size >= 0
+          ? sizeMin === sizeMax
+            ? (radiusRange[0] + radiusRange[1]) / 2
+            : mapRange(point.size, [sizeMin, sizeMax], radiusRange)
+          : 4;
+      const title = point.label && point.label.length > 0
+        ? `<title>${escapeXml(point.label)}</title>`
+        : "";
+      body.push(
+        `<circle class="stdlib-chart-map-point stdlib-chart-series-${seriesIndex % 8}" cx="${fmt(x)}" cy="${fmt(y)}" r="${fmt(radius)}">${title}</circle>`,
+      );
+    }
+    body.push("</svg>");
   }
 
   if (finitePoints.length === 0) {

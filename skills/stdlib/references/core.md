@@ -832,6 +832,10 @@ type MapPoint = {
   label?: string; size?: number;
 };
 type MapSeries = { label?: string; data: MapPoint[] };
+type MapViewport = {
+  latitude: number; longitude: number;
+  zoom: number;                    // clamped to 0..5; each level doubles scale
+};
 type BarItem = { label: string; value: number };
 type SliceItem = { label: string; value: number };
 type ReferenceLine = { value: number; axis?: "x" | "y"; label?: string };
@@ -940,6 +944,7 @@ charts.heatmap(opts: ChartOptions & {
 
 charts.map(opts: ChartOptions & {
   series: MapSeries[];
+  viewport?: MapViewport;
   sizeRange?: [number, number];
   legend?: boolean;
 }): string
@@ -1027,6 +1032,7 @@ charts.map({
     label: "Healthy",
     data: [{ latitude: 52.52, longitude: 13.405, label: "Berlin", size: 128 }],
   }],
+  viewport: { latitude: 52.52, longitude: 13.405, zoom: 2 },
   sizeRange: [3, 11],
   legend: true,
 });

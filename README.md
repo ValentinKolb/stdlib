@@ -182,6 +182,7 @@ const regions = charts.map({
     label: "Healthy",
     data: [{ latitude: 52.52, longitude: 13.405, label: "Berlin" }],
   }],
+  viewport: { latitude: 52.52, longitude: 13.405, zoom: 2 },
   legend: true,
 });
 

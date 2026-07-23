@@ -468,18 +468,20 @@ const cases: Case[] = [
   },
   {
     name: "map-compact",
-    title: "Map — compact dashboard panel",
+    title: "Map — deterministic Europe viewport",
     svg: charts.map({
       series: [
         {
           data: [
             { latitude: 59.3293, longitude: 18.0686, label: "Stockholm" },
+            { latitude: 52.52, longitude: 13.405, label: "Berlin" },
             { latitude: 48.8566, longitude: 2.3522, label: "Paris" },
-            { latitude: 31.2304, longitude: 121.4737, label: "Shanghai" },
-            { latitude: -37.8136, longitude: 144.9631, label: "Melbourne" },
+            { latitude: 38.7223, longitude: -9.1393, label: "Lisbon" },
+            { latitude: 37.9838, longitude: 23.7275, label: "Athens" },
           ],
         },
       ],
+      viewport: { latitude: 50, longitude: 10, zoom: 2 },
       width: 420,
       height: 220,
       className: "compact-map",

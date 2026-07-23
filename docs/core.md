@@ -486,7 +486,10 @@ charts.gauge({ value: 72, min: 0, max: 100, label: "CPU", unit: "%" });
 charts.barGauge({ data: [{ label: "Disk", value: 91, unit: "%" }] });
 charts.stat({ label: "Requests / min", value: 12482, delta: 8.4, sparkline: [...] });
 charts.heatmap({ data: [{ x: "12:00", y: "p95", value: 89 }] });
-charts.map({ series: [{ data: [{ latitude: 52.52, longitude: 13.405 }] }] });
+charts.map({
+  series: [{ data: [{ latitude: 52.52, longitude: 13.405 }] }],
+  viewport: { latitude: 52.52, longitude: 13.405, zoom: 2 },
+});
 charts.stateTimeline({ rows: [{ label: "API", intervals: [{ from: 0, to: 8, state: "ok" }] }] });
 ```
 
@@ -634,6 +637,7 @@ charts.boxplot({
 ```ts
 charts.map({
   title: "Edge network health",
+  viewport: { latitude: 35, longitude: 15, zoom: 1 },
   series: [
     {
       label: "Healthy",
@@ -658,6 +662,18 @@ outside latitude `-90..90` or longitude `-180..180` are ignored. Point labels
 become escaped SVG `<title>` elements. The renderer does not cluster or
 aggregate overlapping coordinates; pre-aggregate data and use `size` when the
 magnitude should control the bubble radius.
+
+`viewport` selects a deterministic center and zoom for the generated SVG.
+Zoom `0` shows the full world; each additional level doubles the scale, up to
+level `5`. The center is clamped so the viewport never exposes space beyond
+the map, and marker radii remain fixed while zooming. Non-finite viewport
+fields fall back to `0`; a non-finite zoom therefore selects the full-world
+view.
+
+The renderer remains pure and stateless. Interactive wrappers should own the
+viewport state, update it for pan/zoom controls, and pass the resulting
+`viewport` into each render. Reusing the same viewport during data refreshes
+preserves the visible region and produces SSR-stable output.
 
 ### Common options (`ChartOptions`)
 

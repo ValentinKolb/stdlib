@@ -1822,6 +1822,67 @@ describe("charts.map", () => {
     expect(svg).toContain('r="3"');
     expect(svg).toContain('r="9"');
   });
+
+  it("renders a deterministic clipped viewport centered on the requested coordinate", () => {
+    const options = {
+      series: [
+        {
+          data: [{ latitude: 52.52, longitude: 13.405, label: "Berlin" }],
+        },
+      ],
+      viewport: { latitude: 52.52, longitude: 13.405, zoom: 3 },
+    };
+    const svg = map(options);
+
+    expect(svg).toBe(map(options));
+    expect(svg).toContain(
+      '<svg class="stdlib-chart-map-viewport" x="16" y="18" width="608" height="304" viewBox="0 0 608 304" overflow="hidden">',
+    );
+    expect(svg).toContain('cx="304" cy="152" r="4"');
+  });
+
+  it("clamps zoom and center coordinates to the visible world bounds", () => {
+    const series = [{ data: [{ latitude: 0, longitude: 0 }] }];
+    const clamped = map({
+      series,
+      viewport: { latitude: 87.1875, longitude: 174.375, zoom: 5 },
+    });
+    const outside = map({
+      series,
+      viewport: { latitude: 90, longitude: 180, zoom: 99 },
+    });
+
+    expect(outside).toBe(clamped);
+  });
+
+  it("falls back to the full-world viewport for non-finite values", () => {
+    const series = [{ data: [{ latitude: 0, longitude: 0 }] }];
+    const fullWorld = map({ series });
+    const invalid = map({
+      series,
+      viewport: { latitude: NaN, longitude: Number.POSITIVE_INFINITY, zoom: NaN },
+    });
+    const belowMinimum = map({
+      series,
+      viewport: { latitude: 45, longitude: 90, zoom: -99 },
+    });
+
+    expect(invalid).toBe(fullWorld);
+    expect(belowMinimum).toBe(fullWorld);
+  });
+
+  it("keeps marker radii fixed while zooming", () => {
+    const series = [{ data: [{ latitude: 0, longitude: 0, size: 10 }] }];
+    const fullWorld = map({ series, sizeRange: [8, 8] });
+    const zoomed = map({
+      series,
+      sizeRange: [8, 8],
+      viewport: { latitude: 0, longitude: 0, zoom: 5 },
+    });
+
+    expect(fullWorld).toContain('cx="304" cy="152" r="8"');
+    expect(zoomed).toContain('cx="304" cy="152" r="8"');
+  });
 });
 
 describe("charts.stateTimeline", () => {
