@@ -93,26 +93,28 @@ Note: `fromHex` throws on odd-length strings. `fromBase32` throws on characters 
 
 ---
 
-## 4. Date Formatting Decision Tree
+## 4. Date and Duration Formatting Decision Tree
 
-**When to use:** Choosing the right `dates.*` function for your display context.
+**When to use:** Choosing the right formatter for dates, timestamps, and measured durations.
 
 ```
-Need exact date + time?
-  Yes -> dates.formatDateTime()         // "05 Mar 2025, 13:53"
-  No  -> Need relative wording?
-           Yes -> Showing in a feed/chat?
-                    Yes -> dates.formatDateTimeRelative()  // "just now", "4 mins ago"
-                    No  -> Showing in a sidebar/list?
-                             Yes -> dates.formatDateRelative()  // "14:30" (today), "Yesterday"
-                             No  -> dates.formatTimeSpan()      // "in 3 days", "2 hours ago"
-           No  -> Need duration between two dates?
-                    Yes -> dates.formatDuration()  // "2 hours 15 minutes"
-                    No  -> dates.formatDate()      // "05 Mar 2025"
+Formatting a raw measured millisecond count?
+  Yes -> text.pprintDurationMs()         // "842ms", "1m 30s"
+  No  -> Need exact date + time?
+           Yes -> dates.formatDateTime() // "05 Mar 2025, 13:53"
+           No  -> Need relative wording?
+                    Yes -> Feed/chat?
+                             Yes -> dates.formatDateTimeRelative() // "4 mins ago"
+                             No  -> Sidebar/list?
+                                      Yes -> dates.formatDateRelative() // "Yesterday"
+                                      No  -> dates.formatTimeSpan() // "in 3 days"
+                    No  -> Duration between two dates?
+                             Yes -> dates.formatDuration() // "2 hours 15 minutes"
+                             No  -> dates.formatDate()     // "05 Mar 2025"
 ```
 
 ```ts
-import { dates } from "@valentinkolb/stdlib";
+import { dates, text } from "@valentinkolb/stdlib";
 
 // Feed message timestamps
 dates.formatDateTimeRelative(msg.createdAt); // "just now" / "4 mins ago" / "Yesterday"
@@ -125,6 +127,9 @@ dates.formatTimeSpan(task.deadline);         // "in 3 days" (uses Intl.RelativeT
 
 // Event duration
 dates.formatDuration(event.start, event.end); // "1 day 3 hours"
+
+// Request latency or timeout budget with no source timestamps
+text.pprintDurationMs(request.durationMs);     // "1.23s"
 ```
 
 Most date helpers accept an optional `DateContext`:
@@ -291,9 +296,14 @@ const siSize = text.pprintBytes(15_000_000, "si");
 // Split for styled UI rendering
 const { value, unit } = text.pprintBytesParts(15728640);
 // { value: "15", unit: "MiB" }
+
+// Counts, ratios, and measured durations
+text.pprintNumber(1_234_567, { compact: true }); // "1.2M" in an English locale
+text.pprintPercent(0.999, { decimals: 3 });      // "99.900%"
+text.pprintDurationMs(90_000);                   // "1m 30s"
 ```
 
-`slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B); pass `"si"` for decimal units (1 KB = 1000 B). Decimal separator follows the runtime locale via `Intl.NumberFormat`. Edge cases (`NaN`, `Infinity`, `0`, negative) return `"0 B"`.
+`slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". Numeric pretty-printers localize separators while keeping compact and duration suffixes deterministic. `pprintPercent` always accepts a ratio. `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B); pass `"si"` for decimal units (1 KB = 1000 B).
 
 ---
 

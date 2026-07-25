@@ -50,6 +50,18 @@ await kvStore.setBytes(`cache:${hash}`, new Uint8Array(await processed.arrayBuff
 console.log(`Cached ${text.pprintBytes(processed.size)} image`);
 ```
 
+### Format Display Values
+
+```typescript
+import { text } from "@valentinkolb/stdlib";
+
+text.pprintNumber(1_234_567);                       // locale-aware grouping
+text.pprintNumber(1_234_567, { compact: true });    // "1.2M" in an English locale
+text.pprintPercent(0.999, { decimals: 3 });         // "99.900%"
+text.pprintDurationMs(90_000);                      // "1m 30s"
+text.pprintDurationMs(null, { fallback: "n/a" });   // "n/a"
+```
+
 ### Generate IDs and Keys
 
 ```typescript

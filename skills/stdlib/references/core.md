@@ -584,6 +584,31 @@ String manipulation utilities.
 text.slugify(content: string): string     // "Hello World!" => "hello-world"
 text.humanize(content: string): string    // "hello_world-foo" => "Hello world foo"
 text.titleify(content: string): string    // "hello_world-foo" => "Hello World Foo"
+type PprintNumberOptions = {
+  compact?: boolean;
+  decimals?: number;
+  locale?: string;
+  fallback?: string;
+};
+text.pprintNumber(value: number | null | undefined, options?: PprintNumberOptions): string
+
+type PprintPercentOptions = {
+  decimals?: number;
+  clamp?: boolean;
+  locale?: string;
+  fallback?: string;
+};
+text.pprintPercent(ratio: number | null | undefined, options?: PprintPercentOptions): string
+
+type PprintDurationMsOptions = {
+  locale?: string;
+  fallback?: string;
+};
+text.pprintDurationMs(
+  milliseconds: number | null | undefined,
+  options?: PprintDurationMsOptions,
+): string
+
 text.pprintBytes(bytes: number, mode?: "iec" | "si"): string
 // 1536 => "1.5 KiB", (1500, "si") => "1.5 KB". Default mode: "iec".
 
@@ -611,6 +636,13 @@ text.slugify("Uber uns!");         // "uber-uns"
 text.slugify("  ---  ");           // ""
 text.humanize("user_first_name");  // "User first name"
 text.titleify("hello-world");      // "Hello World"
+text.pprintNumber(1_234_567, { locale: "en-US" });                 // "1,234,567"
+text.pprintNumber(1_234, { compact: true, locale: "de-DE" });      // "1,2k"
+text.pprintPercent(0.999, { decimals: 3, locale: "en-US" });       // "99.900%"
+text.pprintPercent(1.4, { clamp: true, locale: "en-US" });         // "100%"
+text.pprintDurationMs(0.4);                                        // "<1ms"
+text.pprintDurationMs(90_000);                                     // "1m 30s"
+text.pprintDurationMs(null, { fallback: "n/a" });                  // "n/a"
 text.pprintBytes(0);               // "0 B"
 text.pprintBytes(1536);            // "1.5 KiB"   (default IEC, 1024-base)
 text.pprintBytes(1500, "si");      // "1.5 KB"    (SI, 1000-base)
@@ -631,6 +663,10 @@ text.pascalCase("hello_world");    // "HelloWorld"
 
 **Gotchas:**
 - `slugify` does NFKD normalization and strips diacritics. "u" with combining mark becomes "u".
+- `pprintNumber` uses deterministic `k/M/B/T` compact suffixes. Only the numeric part follows `locale`; explicit `decimals` are fixed.
+- `pprintPercent` always accepts a ratio: `0.19` renders as `19%`. It never accepts an already multiplied percentage scale. `clamp: true` constrains the ratio to `0..1`.
+- `pprintDurationMs` accepts a raw millisecond count and uses the `ms/s/m/h/d` ladder with at most two non-zero units for minute-or-longer values.
+- The new numeric pretty-printers return `"—"` for null, undefined, or non-finite values unless `fallback` is set. Negative durations are also invalid.
 - `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B). Pass `"si"` for decimal units (1 KB = 1000 B).
 - `pprintBytes` is locale-aware: decimal separator follows the runtime default via `Intl.NumberFormat` (e.g. `"1,5 KiB"` in DE, `"1.5 KiB"` in EN). Thousands grouping is disabled.
 - `pprintBytes` and `pprintBytesParts` guard against Infinity, NaN, and non-positive values, returning `"0 B"` / `{ value: "0", unit: "B" }`.

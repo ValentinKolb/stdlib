@@ -3,6 +3,9 @@ import {
   slugify,
   humanize,
   titleify,
+  pprintNumber,
+  pprintPercent,
+  pprintDurationMs,
   pprintBytes,
   pprintBytesParts,
   truncate,
@@ -11,6 +14,7 @@ import {
   snakeCase,
   kebabCase,
   pascalCase,
+  text,
 } from "./text";
 
 // ==========================
@@ -156,6 +160,124 @@ describe("pprintBytesParts", () => {
 
   it("formats raw bytes without decimals", () => {
     expect(pprintBytesParts(512)).toEqual({ value: "512", unit: "B" });
+  });
+});
+
+// ==========================
+// pprintNumber
+// ==========================
+
+describe("pprintNumber", () => {
+  it("uses locale-aware grouping", () => {
+    expect(pprintNumber(1_234_567, { locale: "en-US" })).toBe("1,234,567");
+    expect(pprintNumber(1_234_567, { locale: "de-DE" })).toBe("1.234.567");
+  });
+
+  it("uses fixed decimals when requested", () => {
+    expect(pprintNumber(42.567, { decimals: 1, locale: "en-US" })).toBe("42.6");
+    expect(pprintNumber(42, { decimals: 2, locale: "en-US" })).toBe("42.00");
+  });
+
+  it("uses deterministic compact units with localized decimals", () => {
+    expect(pprintNumber(1_234, { compact: true, locale: "en-US" })).toBe("1.2k");
+    expect(pprintNumber(1_234, { compact: true, locale: "de-DE" })).toBe("1,2k");
+    expect(pprintNumber(1_234_567, { compact: true, locale: "en-US" })).toBe("1.2M");
+    expect(pprintNumber(1_234_567_890, { compact: true, locale: "en-US" })).toBe("1.2B");
+    expect(pprintNumber(1_234_567_890_000, { compact: true, locale: "en-US" })).toBe("1.2T");
+  });
+
+  it("preserves signs and promotes rounded compact boundaries", () => {
+    expect(pprintNumber(-1_234, { compact: true, locale: "en-US" })).toBe("-1.2k");
+    expect(pprintNumber(999_999, { compact: true, locale: "en-US" })).toBe("1M");
+  });
+
+  it("normalizes explicit decimal counts", () => {
+    expect(pprintNumber(42.6, { decimals: -2, locale: "en-US" })).toBe("43");
+    expect(pprintNumber(42, { decimals: 1.9, locale: "en-US" })).toBe("42.0");
+  });
+
+  it("returns the configurable fallback for invalid values", () => {
+    expect(pprintNumber(null)).toBe("—");
+    expect(pprintNumber(undefined)).toBe("—");
+    expect(pprintNumber(Number.NaN)).toBe("—");
+    expect(pprintNumber(Number.POSITIVE_INFINITY, { fallback: "n/a" })).toBe("n/a");
+  });
+});
+
+// ==========================
+// pprintPercent
+// ==========================
+
+describe("pprintPercent", () => {
+  it("formats ratios as percentages", () => {
+    expect(pprintPercent(0.1234, { locale: "en-US" })).toBe("12%");
+    expect(pprintPercent(0.1234, { decimals: 1, locale: "en-US" })).toBe("12.3%");
+    expect(pprintPercent(0.999, { decimals: 3, locale: "en-US" })).toBe("99.900%");
+  });
+
+  it("localizes the numeric part while keeping a stable percent suffix", () => {
+    expect(pprintPercent(0.1234, { decimals: 1, locale: "de-DE" })).toBe("12,3%");
+  });
+
+  it("only clamps when requested", () => {
+    expect(pprintPercent(1.4, { locale: "en-US" })).toBe("140%");
+    expect(pprintPercent(1.4, { clamp: true, locale: "en-US" })).toBe("100%");
+    expect(pprintPercent(-0.2, { clamp: true, locale: "en-US" })).toBe("0%");
+  });
+
+  it("returns the configurable fallback for invalid values", () => {
+    expect(pprintPercent(null)).toBe("—");
+    expect(pprintPercent(Number.NaN, { fallback: "n/a" })).toBe("n/a");
+    expect(pprintPercent(Number.NEGATIVE_INFINITY)).toBe("—");
+    expect(pprintPercent(Number.MAX_VALUE)).toBe("—");
+  });
+});
+
+// ==========================
+// pprintDurationMs
+// ==========================
+
+describe("pprintDurationMs", () => {
+  it("formats sub-millisecond and millisecond durations", () => {
+    expect(pprintDurationMs(0)).toBe("0ms");
+    expect(pprintDurationMs(0.4)).toBe("<1ms");
+    expect(pprintDurationMs(842, { locale: "en-US" })).toBe("842ms");
+  });
+
+  it("formats seconds with magnitude-aware precision", () => {
+    expect(pprintDurationMs(1_234, { locale: "en-US" })).toBe("1.23s");
+    expect(pprintDurationMs(12_340, { locale: "en-US" })).toBe("12.3s");
+    expect(pprintDurationMs(1_234, { locale: "de-DE" })).toBe("1,23s");
+  });
+
+  it("formats longer durations with at most two non-zero units", () => {
+    expect(pprintDurationMs(90_000, { locale: "en-US" })).toBe("1m 30s");
+    expect(pprintDurationMs(7_200_000, { locale: "en-US" })).toBe("2h");
+    expect(pprintDurationMs(88_200_000, { locale: "en-US" })).toBe("1d 30m");
+  });
+
+  it("promotes values that round across unit boundaries", () => {
+    expect(pprintDurationMs(999.6, { locale: "en-US" })).toBe("1s");
+    expect(pprintDurationMs(59_999, { locale: "en-US" })).toBe("1m");
+    expect(pprintDurationMs(3_599_999, { locale: "en-US" })).toBe("1h");
+  });
+
+  it("returns the configurable fallback for invalid durations", () => {
+    expect(pprintDurationMs(null)).toBe("—");
+    expect(pprintDurationMs(undefined, { fallback: "-" })).toBe("-");
+    expect(pprintDurationMs(-1)).toBe("—");
+    expect(pprintDurationMs(Number.NaN)).toBe("—");
+    expect(pprintDurationMs(Number.POSITIVE_INFINITY)).toBe("—");
+  });
+});
+
+describe("text namespace", () => {
+  it("exposes all pretty-printers", () => {
+    expect(text.pprintNumber).toBe(pprintNumber);
+    expect(text.pprintPercent).toBe(pprintPercent);
+    expect(text.pprintDurationMs).toBe(pprintDurationMs);
+    expect(text.pprintBytes).toBe(pprintBytes);
+    expect(text.pprintBytesParts).toBe(pprintBytesParts);
   });
 });
 

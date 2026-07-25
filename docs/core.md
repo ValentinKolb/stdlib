@@ -354,6 +354,11 @@ import { text } from "@valentinkolb/stdlib";
 text.slugify("Hello World!");     // "hello-world"
 text.humanize("hello_world-foo"); // "Hello world foo"
 text.titleify("hello_world-foo"); // "Hello World Foo"
+text.pprintNumber(1_234_567, { locale: "en-US" });                 // "1,234,567"
+text.pprintNumber(1_234_567, { compact: true, locale: "en-US" });  // "1.2M"
+text.pprintPercent(0.1234, { decimals: 1, locale: "en-US" });      // "12.3%"
+text.pprintDurationMs(1_234, { locale: "en-US" });                 // "1.23s"
+text.pprintDurationMs(90_000);                                     // "1m 30s"
 text.pprintBytes(1536);                // "1.5 KiB" (IEC default, 1024-base; locale-aware decimal)
 text.pprintBytes(1500, "si");          // "1.5 KB"  (SI mode, 1000-base)
 text.pprintBytes(0);                   // "0 B"
@@ -371,6 +376,18 @@ text.snakeCase("helloWorld");     // "hello_world"
 text.kebabCase("HelloWorld");     // "hello-world"
 text.pascalCase("hello_world");   // "HelloWorld"
 ```
+
+`pprintNumber`, `pprintPercent`, and `pprintDurationMs` accept an optional
+`locale` and default to the runtime locale. Their suffixes remain deterministic
+across locales: compact numbers use `k/M/B/T`, percentages use `%`, and
+durations use `ms/s/m/h/d`. Only the numeric separators are localized.
+
+`pprintPercent` always accepts a ratio (`0.12` becomes `12%`); set `clamp: true`
+to constrain the ratio to `0..1`. Explicit `decimals` are fixed, which supports
+SLO-style output such as `99.900%`. Null, undefined, and non-finite values
+return `"—"` unless `fallback` is supplied. Negative millisecond durations are
+also invalid. Durations of at least one minute render at most two non-zero
+units.
 
 ## fuzzy
 

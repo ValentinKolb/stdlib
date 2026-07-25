@@ -72,6 +72,263 @@ export const titleify = (content: string): string => {
     .join(" ");
 };
 
+export type PprintNumberOptions = {
+  /** Use deterministic decimal suffixes (`k`, `M`, `B`, `T`). Default false. */
+  compact?: boolean;
+  /** Fixed fraction digits, normalized to an integer from 0 to 20. */
+  decimals?: number;
+  /** Number-format locale. Defaults to the runtime locale. */
+  locale?: string;
+  /** Returned for null, undefined, NaN, or Infinity. Default `"—"`. */
+  fallback?: string;
+};
+
+export type PprintPercentOptions = {
+  /** Fixed fraction digits, normalized to an integer from 0 to 20. Default 0. */
+  decimals?: number;
+  /** Clamp the input ratio to 0..1 before formatting. Default false. */
+  clamp?: boolean;
+  /** Number-format locale. Defaults to the runtime locale. */
+  locale?: string;
+  /** Returned for null, undefined, NaN, or Infinity. Default `"—"`. */
+  fallback?: string;
+};
+
+export type PprintDurationMsOptions = {
+  /** Number-format locale. Defaults to the runtime locale. */
+  locale?: string;
+  /** Returned for null, undefined, negative, NaN, or Infinity. Default `"—"`. */
+  fallback?: string;
+};
+
+const DEFAULT_PPRINT_FALLBACK = "—";
+const MAX_PPRINT_DECIMALS = 20;
+
+const normalizePprintDecimals = (decimals: number | undefined, fallback: number): number => {
+  if (!Number.isFinite(decimals)) return fallback;
+  return Math.max(0, Math.min(MAX_PPRINT_DECIMALS, Math.trunc(decimals!)));
+};
+
+const exactFractionDigits = (decimals: number | undefined) =>
+  decimals === undefined
+    ? {}
+    : {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      };
+
+const formatLocalizedNumber = (
+  value: number,
+  options: {
+    locale?: string;
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
+    useGrouping?: boolean;
+  },
+): string =>
+  new Intl.NumberFormat(options.locale, {
+    minimumFractionDigits: options.minimumFractionDigits,
+    maximumFractionDigits: options.maximumFractionDigits,
+    useGrouping: options.useGrouping,
+  }).format(Object.is(value, -0) ? 0 : value);
+
+const COMPACT_NUMBER_UNITS = [
+  { threshold: 1_000, suffix: "k" },
+  { threshold: 1_000_000, suffix: "M" },
+  { threshold: 1_000_000_000, suffix: "B" },
+  { threshold: 1_000_000_000_000, suffix: "T" },
+] as const;
+
+const compactUnitIndexFor = (value: number): number => {
+  const absolute = Math.abs(value);
+  for (let index = COMPACT_NUMBER_UNITS.length - 1; index >= 0; index--) {
+    if (absolute >= COMPACT_NUMBER_UNITS[index]!.threshold) return index;
+  }
+  return -1;
+};
+
+const formatCompactNumber = (
+  value: number,
+  unitIndex: number,
+  decimals: number | undefined,
+  locale: string | undefined,
+): string => {
+  const compactDecimals = decimals ?? 1;
+  const roundingFactor = 10 ** compactDecimals;
+  const unit = COMPACT_NUMBER_UNITS[unitIndex]!;
+  const roundedAbsolute =
+    Math.round((Math.abs(value) / unit.threshold + Number.EPSILON) * roundingFactor) /
+    roundingFactor;
+  const selectedIndex =
+    roundedAbsolute >= 1_000 && unitIndex < COMPACT_NUMBER_UNITS.length - 1
+      ? unitIndex + 1
+      : unitIndex;
+  const selectedUnit = COMPACT_NUMBER_UNITS[selectedIndex]!;
+  return `${formatLocalizedNumber(value / selectedUnit.threshold, {
+    locale,
+    minimumFractionDigits: decimals ?? 0,
+    maximumFractionDigits: compactDecimals,
+    useGrouping: false,
+  })}${selectedUnit.suffix}`;
+};
+
+/**
+ * Format a finite number with locale-aware grouping and optional compact units.
+ *
+ * Compact suffixes are deterministic across locales; only the numeric part is
+ * localized. Explicit `decimals` are fixed, while compact output otherwise
+ * uses up to one fraction digit.
+ *
+ * @example text.pprintNumber(1234567, { locale: "en-US" })                 // "1,234,567"
+ * @example text.pprintNumber(1234567, { compact: true, locale: "en-US" })  // "1.2M"
+ * @example text.pprintNumber(1234, { compact: true, locale: "de-DE" })     // "1,2k"
+ */
+export const pprintNumber = (
+  value: number | null | undefined,
+  options: PprintNumberOptions = {},
+): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return options.fallback ?? DEFAULT_PPRINT_FALLBACK;
+  }
+
+  const hasExplicitDecimals = options.decimals !== undefined;
+  const decimals = hasExplicitDecimals
+    ? normalizePprintDecimals(options.decimals, 0)
+    : undefined;
+  const compactUnitIndex = options.compact ? compactUnitIndexFor(value) : -1;
+
+  if (compactUnitIndex < 0) {
+    return formatLocalizedNumber(value, {
+      locale: options.locale,
+      ...exactFractionDigits(decimals),
+    });
+  }
+  return formatCompactNumber(value, compactUnitIndex, decimals, options.locale);
+};
+
+/**
+ * Format a ratio as a percentage.
+ *
+ * The input is always a ratio: `0.12` renders as `12%`. This function never
+ * accepts an already multiplied percentage scale.
+ *
+ * @example text.pprintPercent(0.1234, { locale: "en-US" })                // "12%"
+ * @example text.pprintPercent(0.999, { decimals: 3, locale: "en-US" })    // "99.900%"
+ * @example text.pprintPercent(1.4, { clamp: true, locale: "en-US" })      // "100%"
+ */
+export const pprintPercent = (
+  ratio: number | null | undefined,
+  options: PprintPercentOptions = {},
+): string => {
+  if (typeof ratio !== "number" || !Number.isFinite(ratio)) {
+    return options.fallback ?? DEFAULT_PPRINT_FALLBACK;
+  }
+
+  const decimals = normalizePprintDecimals(options.decimals, 0);
+  const normalizedRatio = options.clamp
+    ? Math.max(0, Math.min(1, ratio))
+    : ratio;
+  const percentage = normalizedRatio * 100;
+  if (!Number.isFinite(percentage)) {
+    return options.fallback ?? DEFAULT_PPRINT_FALLBACK;
+  }
+  const value = formatLocalizedNumber(percentage, {
+    locale: options.locale,
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return `${value}%`;
+};
+
+const formatDurationParts = (totalSeconds: number, locale: string | undefined): string => {
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return [
+    { value: days, unit: "d" },
+    { value: hours, unit: "h" },
+    { value: minutes, unit: "m" },
+    { value: seconds, unit: "s" },
+  ]
+    .filter((part) => part.value > 0)
+    .slice(0, 2)
+    .map(
+      (part) =>
+        `${formatLocalizedNumber(part.value, {
+          locale,
+          maximumFractionDigits: 0,
+        })}${part.unit}`,
+    )
+    .join(" ");
+};
+
+const formatSubsecondDuration = (
+  milliseconds: number,
+  locale: string | undefined,
+): string => {
+  const roundedMilliseconds = Math.round(milliseconds);
+  return roundedMilliseconds >= 1_000
+    ? "1s"
+    : `${formatLocalizedNumber(roundedMilliseconds, {
+        locale,
+        maximumFractionDigits: 0,
+      })}ms`;
+};
+
+const formatSecondsDuration = (
+  milliseconds: number,
+  locale: string | undefined,
+): string => {
+  const seconds = milliseconds / 1_000;
+  const decimals = seconds < 10 ? 2 : 1;
+  const roundingFactor = 10 ** decimals;
+  const roundedSeconds =
+    Math.round((seconds + Number.EPSILON) * roundingFactor) / roundingFactor;
+  return roundedSeconds >= 60
+    ? formatDurationParts(60, locale)
+    : `${formatLocalizedNumber(roundedSeconds, {
+        locale,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: decimals,
+        useGrouping: false,
+      })}s`;
+};
+
+/**
+ * Format a raw millisecond duration with a deterministic short-unit ladder.
+ *
+ * Invalid and negative durations return `fallback`. Durations of at least one
+ * minute are rounded to whole seconds and rendered with at most two non-zero
+ * units.
+ *
+ * @example text.pprintDurationMs(0.4)       // "<1ms"
+ * @example text.pprintDurationMs(1234)      // "1.23s"
+ * @example text.pprintDurationMs(90_000)    // "1m 30s"
+ * @example text.pprintDurationMs(7_200_000) // "2h"
+ */
+export const pprintDurationMs = (
+  milliseconds: number | null | undefined,
+  options: PprintDurationMsOptions = {},
+): string => {
+  if (
+    typeof milliseconds !== "number" ||
+    !Number.isFinite(milliseconds) ||
+    milliseconds < 0
+  ) {
+    return options.fallback ?? DEFAULT_PPRINT_FALLBACK;
+  }
+  if (milliseconds === 0) return "0ms";
+  if (milliseconds < 1) return "<1ms";
+  if (milliseconds < 1_000) return formatSubsecondDuration(milliseconds, options.locale);
+  if (milliseconds < 60_000) return formatSecondsDuration(milliseconds, options.locale);
+
+  return formatDurationParts(
+    Math.round(milliseconds / 1_000),
+    options.locale,
+  );
+};
+
 /**
  * Mode for byte size formatting.
  *
@@ -297,6 +554,9 @@ export const text = {
   slugify,
   humanize,
   titleify,
+  pprintNumber,
+  pprintPercent,
+  pprintDurationMs,
   pprintBytes,
   pprintBytesParts,
   truncate,
