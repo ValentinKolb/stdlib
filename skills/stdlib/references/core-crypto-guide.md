@@ -1,6 +1,6 @@
 # Crypto Best Practices Guide
 
-Comprehensive guide for using `crypto.*` from `@valentinkolb/stdlib`.
+Comprehensive guide for using `crypto.*` from `@k2b/stdlib`.
 
 ---
 
@@ -78,7 +78,7 @@ const { uri, secret } = await crypto.totp.create({
 });
 
 // Step 2: Show QR code of `uri` to the user
-// Note: qr lives behind the `/qr` subpath -- import { qr } from "@valentinkolb/stdlib/qr"
+// Note: qr lives behind the `/qr` subpath -- import { qr } from "@k2b/stdlib/qr"
 const qrSvg = qr.toSvg(uri);
 
 // Step 3: Store secret encrypted at rest (NEVER plaintext)
@@ -190,7 +190,7 @@ const decrypted = JSON.parse(
 `password` is a separate module from `crypto` for tree-shaking -- importing `crypto` does not pull in the 5KB EFF wordlist.
 
 ```ts
-import { password } from "@valentinkolb/stdlib";
+import { password } from "@k2b/stdlib";
 ```
 
 Choose the right generator for the use case:

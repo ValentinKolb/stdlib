@@ -1,8 +1,8 @@
 # Core Modules
 
 ```ts
-import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, highlight, charts, searchParams, cache } from "@valentinkolb/stdlib";
-import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
+import { encoding, crypto, password, dates, fileIcons, gradients, result, svg, timing, streaming, text, fuzzy, highlight, charts, searchParams, cache } from "@k2b/stdlib";
+import { qr } from "@k2b/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
 ## encoding
@@ -10,7 +10,7 @@ import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires th
 Base64, hex, and Base32 encode/decode. Uses native `Buffer`/`Uint8Array.toHex` when available.
 
 ```ts
-import { encoding } from "@valentinkolb/stdlib";
+import { encoding } from "@k2b/stdlib";
 
 const bytes = new Uint8Array([0xca, 0xfe]);
 encoding.toHex(bytes);    // "cafe"
@@ -35,7 +35,7 @@ SHA-256 hashing, UUID/ULID generation, key generation, symmetric/asymmetric encr
 ### Common utilities
 
 ```ts
-import { crypto } from "@valentinkolb/stdlib";
+import { crypto } from "@k2b/stdlib";
 
 await crypto.common.hash("hello");          // SHA-256 hex string
 crypto.common.fnv1aHash("hello");           // fast non-crypto hash
@@ -99,7 +99,7 @@ const ok = await crypto.totp.verify({ token: "123456", secret });
 Password generation and strength analysis. Separated from crypto for tree-shaking -- importing crypto won't pull in the 5KB wordlist.
 
 ```ts
-import { password } from "@valentinkolb/stdlib";
+import { password } from "@k2b/stdlib";
 
 password.random();                                    // "aB3kLm9xQr2Wp5Nj7Ht" (20 chars)
 password.random({ length: 32, symbols: true });
@@ -136,7 +136,7 @@ type DateContext = {
 Existing calls keep their current behavior: absolute formatters default to UTC, calendar helpers default to the runtime's local timezone. Pass `timeZone` when the user's calendar day matters.
 
 ```ts
-import { dates } from "@valentinkolb/stdlib";
+import { dates } from "@k2b/stdlib";
 
 dates.formatDate("2025-03-05T13:53:00Z");         // "05 Mar 2025"
 dates.formatDateTime("2025-03-05T13:53:00Z");      // "05 Mar 2025, 13:53"
@@ -168,7 +168,7 @@ choosing or shifting an occurrence is intentional.
 Calendar grids, date checks, navigation, and locale-aware formatting are all part of the `dates` module.
 
 ```ts
-import { dates } from "@valentinkolb/stdlib";
+import { dates } from "@k2b/stdlib";
 
 const weeks = dates.getMonthGrid(2025, 0);  // January 2025, 2D array of Dates
 const days = dates.getWeekDays(new Date());  // Mon-Sun array
@@ -195,7 +195,7 @@ dates.buildCalendarUrl("/app", { view: "week", date: new Date() }, { timeZone: "
 Maps files to Tabler icon CSS classes and broad categories by extension and MIME type.
 
 ```ts
-import { fileIcons } from "@valentinkolb/stdlib";
+import { fileIcons } from "@k2b/stdlib";
 
 fileIcons.getFileIcon({ name: "app.ts", type: "file" });
 // "ti-brand-typescript text-blue-500"
@@ -212,7 +212,7 @@ fileIcons.getFileCategory({ name: "photo.jpg", type: "file" });
 Named CSS gradient presets for UI theming (Berry, Ocean, Sunset, Forest, Pride, Gold, Mono).
 
 ```ts
-import { gradients } from "@valentinkolb/stdlib";
+import { gradients } from "@k2b/stdlib";
 
 gradients.presets;                    // GradientPreset[]
 gradients.getById("ocean");          // { id, label, style, preview }
@@ -226,7 +226,7 @@ Apply with inline styles: `<span style={preset.style}>Username</span>`.
 Typed `Result<T, E>` for service-layer error handling with pagination support.
 
 ```ts
-import { ok, fail, err, unwrap, tryCatch, paginate, okMany } from "@valentinkolb/stdlib";
+import { ok, fail, err, unwrap, tryCatch, paginate, okMany } from "@k2b/stdlib";
 
 // Constructors
 ok({ id: 1 });                       // { ok: true, data: { id: 1 } }
@@ -258,7 +258,7 @@ so the optional `lean-qr` peer dependency is only required for consumers that
 actually use QR features.
 
 ```ts
-import { qr } from "@valentinkolb/stdlib/qr";
+import { qr } from "@k2b/stdlib/qr";
 
 // Generate payloads
 qr.wifi({ ssid: "Office", password: "secret" });
@@ -280,7 +280,7 @@ const svgString = qr.toSvg(qr.wifi({ ssid: "Guest" }), {
 Deterministic SVG avatar generation and WebP data URL parsing.
 
 ```ts
-import { svg } from "@valentinkolb/stdlib";
+import { svg } from "@k2b/stdlib";
 
 const avatarBytes = svg.generateAvatar("user-123", "JD");
 // Uint8Array containing a 128x128 SVG with color derived from the ID
@@ -294,7 +294,7 @@ const imageData = svg.parseWebpDataUrl("data:image/webp;base64,...");
 Async timing utilities: sleep, jitter, write-coalescing, min-load-time, shuffle, random.
 
 ```ts
-import { timing } from "@valentinkolb/stdlib";
+import { timing } from "@k2b/stdlib";
 
 await timing.sleep(500);
 timing.jitter(1000, 200);              // 800-1200 (crypto-random)
@@ -329,7 +329,7 @@ const onScroll = timing.throttle(() => {
 Async generators for consuming `ReadableStream` data. Works with `fetch()` response bodies.
 
 ```ts
-import { streaming } from "@valentinkolb/stdlib";
+import { streaming } from "@k2b/stdlib";
 
 // Parse Server-Sent Events (SSE)
 const res = await fetch("/api/events");
@@ -349,7 +349,7 @@ for await (const entry of streaming.parseNDJSON<LogEntry>(res2.body!)) {
 String transformation and formatting utilities.
 
 ```ts
-import { text } from "@valentinkolb/stdlib";
+import { text } from "@k2b/stdlib";
 
 text.slugify("Hello World!");     // "hello-world"
 text.humanize("hello_world-foo"); // "Hello world foo"
@@ -396,7 +396,7 @@ mean?" lookups. Case-insensitive by default; pass `caseSensitive: true` to
 opt into strict matching.
 
 ```ts
-import { fuzzy } from "@valentinkolb/stdlib";
+import { fuzzy } from "@k2b/stdlib";
 
 // ─── Subsequence fuzzy match (UI search, command palette) ───────────────
 
@@ -442,7 +442,7 @@ names only; it does not include CSS, themes, colors, DOM code, or external
 parser dependencies.
 
 ```ts
-import { highlight } from "@valentinkolb/stdlib";
+import { highlight } from "@k2b/stdlib";
 
 highlight.escape(`<b>"x"</b>`); // "&lt;b&gt;&quot;x&quot;&lt;/b&gt;"
 
@@ -489,7 +489,7 @@ inject into the DOM, write to disk, or send over the wire. Pure native, no
 peer dependencies.
 
 ```ts
-import { charts } from "@valentinkolb/stdlib";
+import { charts } from "@k2b/stdlib";
 
 charts.scatter({ series: [{ data: [{x:1,y:2,size:10}] }], sizeRange: [3,14] });
 charts.line({ series: [{ data: [...] }, { data: [...] }] });
@@ -732,7 +732,7 @@ Pass `className` to scope per-instance styles.
 Typed URL search parameter serialization with smart coercion.
 
 ```ts
-import { searchParams } from "@valentinkolb/stdlib";
+import { searchParams } from "@k2b/stdlib";
 
 // Deserialize with type coercion (booleans, numbers, JSON)
 const params = searchParams.deserialize<{ page: number; active: boolean }>(
@@ -752,7 +752,7 @@ const cleanup = searchParams.onChange<{ page: number }>((p) => console.log(p.pag
 In-memory TTL cache with lazy loading and cleanup hooks.
 
 ```ts
-import { createCache } from "@valentinkolb/stdlib";
+import { createCache } from "@k2b/stdlib";
 
 const cache = createCache<User>({ ttl: 5 * 60_000 });
 await cache.set("user:1", { name: "Alice" });

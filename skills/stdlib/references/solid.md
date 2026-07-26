@@ -1,9 +1,9 @@
-# @valentinkolb/stdlib/solid -- SolidJS Reactive Primitives
+# @k2b/stdlib/solid -- SolidJS Reactive Primitives
 
 All primitives are imported from a single entry point:
 
 ```ts
-import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@valentinkolb/stdlib/solid";
+import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
 ```
 
 ## Key Patterns
@@ -463,7 +463,7 @@ return (
 ## localStore
 
 Reactive localStorage with SolidJS stores and cross-tab synchronization via BroadcastChannel.
-For simple non-reactive cookie storage, see `cookies` from `@valentinkolb/stdlib/browser`.
+For simple non-reactive cookie storage, see `cookies` from `@k2b/stdlib/browser`.
 
 ### API
 
@@ -526,7 +526,7 @@ const data = localStore.read<PadData>("pad:abc");
 ## clipboard
 
 Reactive copy-to-clipboard with a timeout-based `wasCopied` feedback signal.
-Wraps `clipboard.copy()` from `@valentinkolb/stdlib/browser` with a reactive signal that auto-resets.
+Wraps `clipboard.copy()` from `@k2b/stdlib/browser` with a reactive signal that auto-resets.
 
 ### API
 

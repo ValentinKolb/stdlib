@@ -10,7 +10,7 @@ compute when read.
 
 ```tsx
 import { createRoot } from "solid-js";
-import { mutation, timed, clipboard } from "@valentinkolb/stdlib/solid";
+import { mutation, timed, clipboard } from "@k2b/stdlib/solid";
 
 // Inside a component -- cleanup is automatic
 function MyComponent() {
@@ -37,7 +37,7 @@ because `onCleanup` has no owner to attach to.
 Supports `onBefore` for optimistic updates, `retry()` to replay, and `abort()` to cancel.
 
 ```tsx
-import { mutation } from "@valentinkolb/stdlib/solid";
+import { mutation } from "@k2b/stdlib/solid";
 
 function TodoCreator() {
   const { data, error, loading, mutate, retry, abort } = mutation.create({
@@ -86,7 +86,7 @@ repeatedly. Both auto-cleanup on component unmount.
 
 ```tsx
 import { createSignal } from "solid-js";
-import { timed } from "@valentinkolb/stdlib/solid";
+import { timed } from "@k2b/stdlib/solid";
 
 function SearchInput() {
   const [query, setQuery] = createSignal("");
@@ -138,7 +138,7 @@ Global singleton registry -- one system per app. Mac-aware display (shows symbol
 text on other platforms). Use `mod+k` for platform-adaptive shortcuts.
 
 ```tsx
-import { hotkeys } from "@valentinkolb/stdlib/solid";
+import { hotkeys } from "@k2b/stdlib/solid";
 import { For } from "solid-js";
 
 function App() {
@@ -190,7 +190,7 @@ Gotchas:
 
 ```tsx
 import { createSignal, For } from "solid-js";
-import { dnd } from "@valentinkolb/stdlib/solid";
+import { dnd } from "@k2b/stdlib/solid";
 
 type Item = { id: string; label: string };
 
@@ -245,7 +245,7 @@ Gotchas:
 `localStore.query` watches multiple keys with a filter function.
 
 ```tsx
-import { localStore } from "@valentinkolb/stdlib/solid";
+import { localStore } from "@k2b/stdlib/solid";
 
 function Settings() {
   const [settings, setSettings] = localStore.create("app:settings", {
@@ -294,7 +294,7 @@ Gotcha: every store item has an internal `_key` field set automatically -- do no
 
 ```tsx
 import { Show, For } from "solid-js";
-import { detailPanel } from "@valentinkolb/stdlib/solid";
+import { detailPanel } from "@k2b/stdlib/solid";
 
 type User = { id: string; name: string; email: string };
 

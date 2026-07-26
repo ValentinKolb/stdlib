@@ -1,6 +1,6 @@
 # Cross-Module Recipes
 
-Practical examples showing how `@valentinkolb/stdlib` modules compose together
+Practical examples showing how `@k2b/stdlib` modules compose together
 to solve real tasks.
 
 ## 1. Authenticated API Client
@@ -9,7 +9,7 @@ Sign every outgoing request with an ECDSA key pair and cache responses with
 automatic TTL expiration.
 
 ```ts
-import { crypto, cache, result } from "@valentinkolb/stdlib";
+import { crypto, cache, result } from "@k2b/stdlib";
 
 const apiCache = cache.create<unknown>({ ttl: 5 * 60_000 });
 
@@ -42,8 +42,8 @@ Resize a user-uploaded image, hash it for deduplication, and persist it to the
 browser's OPFS-backed key-value store.
 
 ```ts
-import { crypto } from "@valentinkolb/stdlib";
-import { images, kvStore } from "@valentinkolb/stdlib/browser";
+import { crypto } from "@k2b/stdlib";
+import { images, kvStore } from "@k2b/stdlib/browser";
 
 async function uploadImage(file: File) {
   const blob = await images
@@ -66,8 +66,8 @@ Use `kvStore` as a persistent offline cache with `cache.create` as a fast
 in-memory layer, and keep the URL search params in sync with filter state.
 
 ```ts
-import { cache, searchParams } from "@valentinkolb/stdlib";
-import { kvStore } from "@valentinkolb/stdlib/browser";
+import { cache, searchParams } from "@k2b/stdlib";
+import { kvStore } from "@k2b/stdlib/browser";
 
 type Project = { id: string; name: string; status: string };
 
@@ -101,7 +101,7 @@ Store user preferences that automatically synchronize across all open tabs using
 the SolidJS `localStore` primitive.
 
 ```ts
-import { localStore } from "@valentinkolb/stdlib/solid";
+import { localStore } from "@k2b/stdlib/solid";
 
 type Settings = {
   theme: "light" | "dark";
@@ -133,7 +133,7 @@ Use `cache.create` with `onMiss` as a single-flight fetch, combined with
 `timing.sleep` and `timing.jitter` for exponential backoff retries.
 
 ```ts
-import { cache, timing, result } from "@valentinkolb/stdlib";
+import { cache, timing, result } from "@k2b/stdlib";
 
 const apiCache = cache.create<unknown>({
   ttl: 60_000,
@@ -167,8 +167,8 @@ Generate a vCard QR code with a deterministic SVG avatar, ready to embed in a
 page or download.
 
 ```ts
-import { svg } from "@valentinkolb/stdlib";
-import { qr } from "@valentinkolb/stdlib/qr";
+import { svg } from "@k2b/stdlib";
+import { qr } from "@k2b/stdlib/qr";
 
 function renderBusinessCard(contact: {
   firstName: string;
@@ -205,8 +205,8 @@ Bundle multiple generated files into a ZIP and trigger a browser download, with
 human-readable file sizes in the console.
 
 ```ts
-import { text } from "@valentinkolb/stdlib";
-import { files } from "@valentinkolb/stdlib/browser";
+import { text } from "@k2b/stdlib";
+import { files } from "@k2b/stdlib/browser";
 
 async function downloadReport(data: {
   csv: string;
@@ -238,7 +238,7 @@ Wire up global hotkeys, drag-and-drop reordering, and accessible click handlers
 in a SolidJS component.
 
 ```ts
-import { dnd, hotkeys, a11y } from "@valentinkolb/stdlib/solid";
+import { dnd, hotkeys, a11y } from "@k2b/stdlib/solid";
 
 type Item = { id: string; label: string };
 
@@ -284,7 +284,7 @@ Consume an SSE-based AI chat completion endpoint with typed error handling and
 incremental UI updates.
 
 ```ts
-import { streaming, result } from "@valentinkolb/stdlib";
+import { streaming, result } from "@k2b/stdlib";
 
 type ChatChunk = { content: string; done: boolean };
 

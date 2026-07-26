@@ -391,7 +391,7 @@ export function getFileIcon(item: FileInfoLike): string {
  * Namespace object exposing all file-icon utilities for convenience imports.
  *
  * @example
- * import { fileIcons } from "@valentinkolb/stdlib";
+ * import { fileIcons } from "@k2b/stdlib";
  * const icon = fileIcons.getFileIcon(file);
  * const category = fileIcons.getFileCategory(file);
  */

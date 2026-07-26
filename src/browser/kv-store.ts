@@ -21,7 +21,7 @@
  * blob files for efficient random access.
  *
  * @example
- * import { kvStore } from "@valentinkolb/stdlib/browser";
+ * import { kvStore } from "@k2b/stdlib/browser";
  *
  * // Structured data (JSON)
  * await kvStore.set("user:1", { name: "Alice", age: 30 });

@@ -1,7 +1,7 @@
 # Browser Modules
 
 ```ts
-import { images, files, cookies, clipboard, notifications, kvStore, theme } from "@valentinkolb/stdlib/browser";
+import { images, files, cookies, clipboard, notifications, kvStore, theme } from "@k2b/stdlib/browser";
 ```
 
 All exports require a browser environment (DOM, `navigator`, `document`).
@@ -11,7 +11,7 @@ All exports require a browser environment (DOM, `navigator`, `document`).
 Chainable image processing pipeline. Each transform creates a new canvas -- the original is never mutated.
 
 ```ts
-import { img } from "@valentinkolb/stdlib/browser";
+import { img } from "@k2b/stdlib/browser";
 
 // Chainable pipeline
 const blob = await img
@@ -62,7 +62,7 @@ File downloads, ZIP creation, native file dialogs, path building, MIME utilities
 ### Downloads
 
 ```ts
-import { files } from "@valentinkolb/stdlib/browser";
+import { files } from "@k2b/stdlib/browser";
 
 files.downloadFileFromContent("hello world", "greeting.txt");
 files.downloadFileFromContent(pngBytes, "photo.png", "image/png");
@@ -150,7 +150,7 @@ const entries = await files.OPFS.ls("data/images");  // ["photo.bin", "thumbs/"]
 Read, write, and delete browser cookies. Supports both raw strings and JSON values.
 
 ```ts
-import { cookies } from "@valentinkolb/stdlib/browser";
+import { cookies } from "@k2b/stdlib/browser";
 
 // JSON cookies (auto-serialized, shallow-merged with defaults)
 cookies.writeJsonCookie("prefs", { theme: "dark", lang: "en" });
@@ -164,15 +164,15 @@ cookies.deleteCookie("token");
 ```
 
 Defaults: `path=/`, `SameSite=Lax`, 1-year `max-age`, auto `Secure` on HTTPS.
-For SolidJS apps that need reactive persistent state with cross-tab sync, see `localStore` from `@valentinkolb/stdlib/solid`.
+For SolidJS apps that need reactive persistent state with cross-tab sync, see `localStore` from `@k2b/stdlib/solid`.
 
 ## clipboard
 
 Copy text to the system clipboard. Requires a secure context (HTTPS or localhost).
-For SolidJS apps, see `clipboard.create()` from `@valentinkolb/stdlib/solid` which adds a reactive `wasCopied` signal that auto-resets after a timeout.
+For SolidJS apps, see `clipboard.create()` from `@k2b/stdlib/solid` which adds a reactive `wasCopied` signal that auto-resets after a timeout.
 
 ```ts
-import { clipboard } from "@valentinkolb/stdlib/browser";
+import { clipboard } from "@k2b/stdlib/browser";
 
 await clipboard.copy("Hello, world!");
 ```
@@ -182,7 +182,7 @@ await clipboard.copy("Hello, world!");
 Native browser notification permission management and display.
 
 ```ts
-import { notifications } from "@valentinkolb/stdlib/browser";
+import { notifications } from "@k2b/stdlib/browser";
 
 notifications.isSupported();           // true/false
 notifications.getPermission();         // "granted" | "denied" | "default"
@@ -205,7 +205,7 @@ handle?.close();  // programmatic dismiss
 Persistent key-value store backed by the Origin Private File System (OPFS). Like `localStorage`, but async and without the 5 MB size limit.
 
 ```ts
-import { kvStore } from "@valentinkolb/stdlib/browser";
+import { kvStore } from "@k2b/stdlib/browser";
 
 // JSON data
 await kvStore.set("user:1", { name: "Alice", age: 30 });
@@ -240,7 +240,7 @@ Light/dark mode toggle with cookie persistence. Works with any CSS framework
 that uses a root-level class (Tailwind, etc.). SSR-safe.
 
 ```ts
-import { theme } from "@valentinkolb/stdlib/browser";
+import { theme } from "@k2b/stdlib/browser";
 
 theme.getCurrent();  // "light" | "dark"
 theme.set("dark");   // applies class + persists to cookie

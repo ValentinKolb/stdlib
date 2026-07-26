@@ -8,7 +8,7 @@
  * SSR-safe: returns `"light"` as default when `document` is unavailable.
  *
  * @example
- * import { theme } from "@valentinkolb/stdlib/browser";
+ * import { theme } from "@k2b/stdlib/browser";
  *
  * theme.getCurrent();  // "light"
  * theme.set("dark");   // applies dark mode, persists to cookie

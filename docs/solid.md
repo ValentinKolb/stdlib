@@ -1,7 +1,7 @@
 # Solid Modules
 
 ```ts
-import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@valentinkolb/stdlib/solid";
+import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
 ```
 
 All exports require SolidJS and must be called inside a reactive owner (component or `createRoot`).
@@ -11,7 +11,7 @@ All exports require SolidJS and must be called inside a reactive owner (componen
 Async mutation controller with reactive signals, lifecycle hooks, abort, and retry.
 
 ```tsx
-import { mutation } from "@valentinkolb/stdlib/solid";
+import { mutation } from "@k2b/stdlib/solid";
 
 const { data, error, loading, mutate, abort, retry } = mutation.create({
   mutation: async (vars: { name: string }, { abortSignal }) => {
@@ -42,7 +42,7 @@ Reactive debounce and interval with automatic cleanup on component unmount.
 ### Debounce
 
 ```tsx
-import { timed } from "@valentinkolb/stdlib/solid";
+import { timed } from "@k2b/stdlib/solid";
 
 const { debouncedFn, trigger, cancel, isPending } = timed.debounce(
   (text: string) => saveSearch(text),
@@ -75,7 +75,7 @@ isRunning();  // boolean
 Global keyboard shortcut registry. The `mod` alias resolves to `Cmd` on Mac, `Ctrl` elsewhere.
 
 ```tsx
-import { hotkeys } from "@valentinkolb/stdlib/solid";
+import { hotkeys } from "@k2b/stdlib/solid";
 
 const { entries, dispose } = hotkeys.create({
   "mod+s": { label: "Save", run: () => save() },
@@ -95,7 +95,7 @@ Hotkeys are registered on mount and unregistered on cleanup. Duplicate combos ar
 Drag-and-drop with pointer and keyboard support. Uses SolidJS directives.
 
 ```tsx
-import { dnd } from "@valentinkolb/stdlib/solid";
+import { dnd } from "@k2b/stdlib/solid";
 
 const { draggable, droppable, isDragging, activeId, overId } = dnd.create({
   onDrop: ({ active, over, intent }) => {
@@ -120,7 +120,7 @@ Supports activation distance, touch delay, custom collision detection, intent bu
 Hybrid SSR + client-side detail panel pattern. Updates URL params without page reloads and supports browser back/forward.
 
 ```tsx
-import { detailPanel } from "@valentinkolb/stdlib/solid";
+import { detailPanel } from "@k2b/stdlib/solid";
 
 // In the detail panel component
 const { item, itemKey } = detailPanel.createPanel({
@@ -147,10 +147,10 @@ const { selectedKey, select, deselect } = detailPanel.createList({
 ## localStore
 
 Reactive SolidJS store with automatic localStorage persistence and cross-tab sync via BroadcastChannel.
-For simple non-reactive cookie storage, see `cookies` from `@valentinkolb/stdlib/browser`.
+For simple non-reactive cookie storage, see `cookies` from `@k2b/stdlib/browser`.
 
 ```tsx
-import { localStore } from "@valentinkolb/stdlib/solid";
+import { localStore } from "@k2b/stdlib/solid";
 
 // Single record
 const [user, setUser] = localStore.create("user", { name: "", email: "" });
@@ -169,10 +169,10 @@ localStore.read("user");    // T | null
 ## clipboard
 
 Reactive clipboard hook with auto-resetting copy-feedback signal.
-Wraps `clipboard.copy()` from `@valentinkolb/stdlib/browser` with a `wasCopied` signal that resets after a timeout.
+Wraps `clipboard.copy()` from `@k2b/stdlib/browser` with a `wasCopied` signal that resets after a timeout.
 
 ```tsx
-import { clipboard } from "@valentinkolb/stdlib/solid";
+import { clipboard } from "@k2b/stdlib/solid";
 
 const { copy, wasCopied } = clipboard.create(2000);
 
@@ -188,7 +188,7 @@ const { copy, wasCopied } = clipboard.create(2000);
 Click-outside detection using a ref callback. Uses `mousedown` to detect before the element's own click handlers fire.
 
 ```tsx
-import { clickOutside } from "@valentinkolb/stdlib/solid";
+import { clickOutside } from "@k2b/stdlib/solid";
 
 const ref = clickOutside.create(() => setOpen(false));
 
@@ -202,7 +202,7 @@ const ref = clickOutside.create(() => setOpen(false));
 Headless file drop zone with MIME type validation and nested-element-safe drag tracking.
 
 ```tsx
-import { dropzone } from "@valentinkolb/stdlib/solid";
+import { dropzone } from "@k2b/stdlib/solid";
 
 const { isDragging, invalidDrag, handlers } = dropzone.create({
   onDrop: (files) => uploadFiles(files),
@@ -225,7 +225,7 @@ const { isDragging, invalidDrag, handlers } = dropzone.create({
 Accessible event handler spreads for non-button interactive elements.
 
 ```tsx
-import { a11y } from "@valentinkolb/stdlib/solid";
+import { a11y } from "@k2b/stdlib/solid";
 
 <div role="button" tabindex="0" {...a11y.clickOrEnter(handleAction)}>
   Click or press Enter

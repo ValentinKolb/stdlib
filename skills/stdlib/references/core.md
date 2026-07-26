@@ -1,16 +1,16 @@
-# @valentinkolb/stdlib -- Core Modules
+# @k2b/stdlib -- Core Modules
 
 All imports come from the root entrypoint:
 
 ```ts
-import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, highlight, charts, cache, result, svg, searchParams, fileIcons, gradients } from "@valentinkolb/stdlib";
-import { qr } from "@valentinkolb/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
+import { encoding, crypto, password, dates, timing, streaming, text, fuzzy, highlight, charts, cache, result, svg, searchParams, fileIcons, gradients } from "@k2b/stdlib";
+import { qr } from "@k2b/stdlib/qr"; // separate subpath -- requires the optional `lean-qr` peer
 ```
 
 Every namespace is also a plain object, so you can destructure or use dot-access:
 
 ```ts
-import { toBase64, fromBase64, ok, fail, err, parseSSE, parseNDJSON } from "@valentinkolb/stdlib";
+import { toBase64, fromBase64, ok, fail, err, parseSSE, parseNDJSON } from "@k2b/stdlib";
 ```
 
 ---
@@ -39,7 +39,7 @@ encoding.fromBase62(str: string): number                      // inverse of toBa
 ### Examples
 
 ```ts
-import { encoding } from "@valentinkolb/stdlib";
+import { encoding } from "@k2b/stdlib";
 
 const bytes = new TextEncoder().encode("hello");
 encoding.toBase64(bytes);  // "aGVsbG8="
@@ -79,7 +79,7 @@ crypto.common.generateKey(length?: number): string                 // random hex
 ```
 
 ```ts
-import { crypto } from "@valentinkolb/stdlib";
+import { crypto } from "@k2b/stdlib";
 
 await crypto.common.hash("hello");       // "2cf24dba5fb0a30e..."
 crypto.common.fnv1aHash("hello");        // "4f9f2cab"
@@ -117,7 +117,7 @@ crypto.asymmetric.decrypt(data: { payload: string; privateKey: string }): Promis
 ```
 
 ```ts
-import { crypto } from "@valentinkolb/stdlib";
+import { crypto } from "@k2b/stdlib";
 
 // Generate key pair
 const { privateKey, publicKey } = await crypto.asymmetric.generate();
@@ -159,7 +159,7 @@ crypto.symmetric.decrypt(data: { payload: string; key: string }): Promise<string
 ```
 
 ```ts
-import { crypto } from "@valentinkolb/stdlib";
+import { crypto } from "@k2b/stdlib";
 
 // Password-based (slow, safe for user passwords)
 const enc = await crypto.symmetric.encrypt({ payload: "secret", key: "user-password" });
@@ -189,7 +189,7 @@ crypto.totp.verify(data: { token: string; secret: string; window?: number }): Pr
 ```
 
 ```ts
-import { crypto } from "@valentinkolb/stdlib";
+import { crypto } from "@k2b/stdlib";
 
 // Setup: generate secret, show QR code of uri to user
 const { uri, secret } = await crypto.totp.create({ label: "user@example.com", issuer: "MyApp" });
@@ -244,7 +244,7 @@ password.strength(pw: string): PasswordStrength
 ### Examples
 
 ```ts
-import { password } from "@valentinkolb/stdlib";
+import { password } from "@k2b/stdlib";
 
 password.random();                                    // "aB3kLm9xQr2Wp5Nj7Ht"
 password.random({ length: 32, symbols: true });       // includes !@#$%^&*...
@@ -299,7 +299,7 @@ dates.formatDuration(from: string | Date, to: string | Date): string      // "2 
 ### Examples
 
 ```ts
-import { dates } from "@valentinkolb/stdlib";
+import { dates } from "@k2b/stdlib";
 
 dates.formatDate("2025-03-05T13:53:00Z");          // "05 Mar 2025"
 dates.formatDateTime("2025-03-05T13:53:00Z");       // "05 Mar 2025, 13:53"
@@ -413,7 +413,7 @@ dates.parseCalendarDate(param: string | undefined, ctx?: DateContext): Date
 ### Examples
 
 ```ts
-import { dates } from "@valentinkolb/stdlib";
+import { dates } from "@k2b/stdlib";
 
 const weeks = dates.getMonthGrid(2025, 2);  // March 2025
 // weeks[0] = [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
@@ -491,7 +491,7 @@ timing.throttle<T extends (...args: any[]) => void>(fn: T, intervalMs: number): 
 ### Examples
 
 ```ts
-import { timing } from "@valentinkolb/stdlib";
+import { timing } from "@k2b/stdlib";
 
 await timing.sleep(500);
 
@@ -552,7 +552,7 @@ streaming.parseNDJSON<T>(stream: ReadableStream<Uint8Array>): AsyncGenerator<T>
 ### Examples
 
 ```ts
-import { streaming } from "@valentinkolb/stdlib";
+import { streaming } from "@k2b/stdlib";
 
 // Server-Sent Events
 const res = await fetch("/api/events");
@@ -630,7 +630,7 @@ text.pascalCase(content: string): string  // "hello_world" => "HelloWorld"
 ### Examples
 
 ```ts
-import { text } from "@valentinkolb/stdlib";
+import { text } from "@k2b/stdlib";
 
 text.slugify("Uber uns!");         // "uber-uns"
 text.slugify("  ---  ");           // ""
@@ -717,7 +717,7 @@ fuzzy.closest(
 ### Examples
 
 ```ts
-import { fuzzy } from "@valentinkolb/stdlib";
+import { fuzzy } from "@k2b/stdlib";
 
 // UI command palette
 fuzzy.match("udh", "userDashboard");
@@ -793,7 +793,7 @@ highlight.presets.sql(text: string): string
 ### Examples
 
 ```ts
-import { highlight } from "@valentinkolb/stdlib";
+import { highlight } from "@k2b/stdlib";
 
 // Safe escaped HTML for raw text.
 highlight.escape(`<b>"x"</b>`);
@@ -996,7 +996,7 @@ charts.stateTimeline(opts: ChartOptions & {
 ### Examples
 
 ```ts
-import { charts } from "@valentinkolb/stdlib";
+import { charts } from "@k2b/stdlib";
 
 // Multi-series line with title, formatted axis, autoVariant styles, legend
 charts.line({
@@ -1156,7 +1156,7 @@ cache.create<T>(options?: CacheOptions<T>): Cache<T>
 ### Examples
 
 ```ts
-import { cache, createCache } from "@valentinkolb/stdlib";
+import { cache, createCache } from "@k2b/stdlib";
 
 // Simple TTL cache
 const tokenCache = cache.create<string>({ ttl: 60_000 });
@@ -1249,7 +1249,7 @@ tryCatch<T>(fn: () => Promise<T>, onError?: (error: unknown) => ServiceError): P
 ### Examples
 
 ```ts
-import { ok, fail, err, okMany, paginate, unwrap, tryCatch } from "@valentinkolb/stdlib";
+import { ok, fail, err, okMany, paginate, unwrap, tryCatch } from "@k2b/stdlib";
 
 // Service function pattern
 async function getUser(id: string): Promise<Result<User>> {
@@ -1292,7 +1292,7 @@ const result2 = await tryCatch(() => riskyOperation());
 ## qr
 
 QR code payload generation and SVG rendering. Lives behind the
-`@valentinkolb/stdlib/qr` subpath so the optional `lean-qr` peer dependency
+`@k2b/stdlib/qr` subpath so the optional `lean-qr` peer dependency
 is only required for consumers that actually use QR features.
 
 ### API
@@ -1317,7 +1317,7 @@ qr.toSvg(data: string, opts?: { on?: string; off?: string; correctionLevel?: "L"
 ### Examples
 
 ```ts
-import { qr } from "@valentinkolb/stdlib/qr";
+import { qr } from "@k2b/stdlib/qr";
 
 // WiFi QR code
 const wifiData = qr.wifi({ ssid: "Office", password: "secret", encryption: "WPA" });
@@ -1373,7 +1373,7 @@ svg.parseWebpDataUrl(dataUrl: string): Uint8Array | null
 ### Examples
 
 ```ts
-import { svg } from "@valentinkolb/stdlib";
+import { svg } from "@k2b/stdlib";
 
 const avatarBytes = svg.generateAvatar("user-123", "JD");
 // Uint8Array containing SVG with colored background and "JD" text
@@ -1419,7 +1419,7 @@ searchParams.onChange<T>(callback: (params: Partial<T>) => void): () => void
 ### Examples
 
 ```ts
-import { searchParams } from "@valentinkolb/stdlib";
+import { searchParams } from "@k2b/stdlib";
 
 // Deserialize (browser: reads from URL)
 // URL: ?page=2&active=true&name=John
@@ -1474,7 +1474,7 @@ fileIcons.getFileIcon(item: FileInfoLike): string
 ### Examples
 
 ```ts
-import { fileIcons } from "@valentinkolb/stdlib";
+import { fileIcons } from "@k2b/stdlib";
 
 fileIcons.getFileCategory({ name: "photo.png", type: "file" });           // "image"
 fileIcons.getFileCategory({ name: "app.ts", type: "file" });              // "code"
@@ -1525,7 +1525,7 @@ Available presets: `"default"` (Berry), `"mono"`, `"ocean"`, `"sunset"`, `"fores
 ### Examples
 
 ```ts
-import { gradients } from "@valentinkolb/stdlib";
+import { gradients } from "@k2b/stdlib";
 
 const preset = gradients.getById("ocean");
 // Apply as inline style:

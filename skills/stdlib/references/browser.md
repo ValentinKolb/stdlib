@@ -1,4 +1,4 @@
-# @valentinkolb/stdlib/browser
+# @k2b/stdlib/browser
 
 Browser utility modules. All exports require a DOM environment (`document`, `navigator`, `window`).
 
@@ -13,13 +13,13 @@ import {
   notifications,
   kvStore,
   theme,
-} from "@valentinkolb/stdlib/browser";
+} from "@k2b/stdlib/browser";
 ```
 
 The `images` namespace is also exported as `img` for brevity:
 
 ```ts
-import { img } from "@valentinkolb/stdlib/browser";
+import { img } from "@k2b/stdlib/browser";
 ```
 
 Individual functions and types can also be imported directly (they are re-exported at the top level):
@@ -32,7 +32,7 @@ import {
   OPFS,
   copyToClipboard,
   readJsonCookie,
-} from "@valentinkolb/stdlib/browser";
+} from "@k2b/stdlib/browser";
 ```
 
 ---
@@ -577,7 +577,7 @@ cookies.deleteCookie("auth_token");
 ## clipboard
 
 Clipboard utilities. Requires a secure context (HTTPS or localhost).
-For SolidJS apps, use `clipboard.create()` from `@valentinkolb/stdlib/solid` which adds a reactive `wasCopied` signal that auto-resets after a timeout.
+For SolidJS apps, use `clipboard.create()` from `@k2b/stdlib/solid` which adds a reactive `wasCopied` signal that auto-resets after a timeout.
 
 ### clipboard.copy
 

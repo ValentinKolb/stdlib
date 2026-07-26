@@ -6,7 +6,7 @@
  * base64-encoded WebP data URLs.
  *
  * @example
- * import { svg } from "@valentinkolb/stdlib";
+ * import { svg } from "@k2b/stdlib";
  *
  * const avatar = svg.generateAvatar("user-123", "JD");
  * const webpData = svg.parseWebpDataUrl(dataUrl);

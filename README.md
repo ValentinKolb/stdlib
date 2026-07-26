@@ -1,19 +1,21 @@
-# @valentinkolb/stdlib
+# @k2b/stdlib
 
 Generic TypeScript utility library -- crypto, encoding, dates, display helpers, files, images, and SolidJS primitives.
 
 **Why?** I kept reimplementing the same micro-utilities across [my projects](https://github.com/ValentinKolb). This package consolidates them in one place with consistent APIs, thorough tests, and minimal dependencies.
 
+> Package migration: `@valentinkolb/stdlib` is deprecated. Use `@k2b/stdlib` for all new installs and upgrades.
+
 ## Design goals
 
 - **Native-first** -- modern browsers ship incredibly powerful APIs (Web Crypto, Intl, CompressionStream, OPFS, ...) but they tend to be verbose and awkward to use directly. This library wraps them into ergonomic, composable functions, using a small runtime dependency (`dayjs`) only where full IANA timezone calendar math needs it. QR and SolidJS stay behind optional peer dependencies (`lean-qr`, `solid-js`).
-- **Tree-shakeable** -- import only what you need from three entry points
+- **Tree-shakeable** -- import only what you need from the entry point matching your runtime
 - **TypeScript-first** -- strict mode, full type inference, no `any`
 
 ## Installation
 
 ```bash
-bun add @valentinkolb/stdlib
+bun add @k2b/stdlib
 
 # Install optional dependencies for QR and SolidJS helpers
 bun add solid-js lean-qr
@@ -23,10 +25,10 @@ bun add solid-js lean-qr
 
 | Import | Environment | What's inside |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
-| `@valentinkolb/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
-| `@valentinkolb/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
-| `@valentinkolb/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
+| `@k2b/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
+| `@k2b/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
+| `@k2b/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
+| `@k2b/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
 
 The split is by **runtime requirement**, not import preference: `browser` modules touch DOM/OPFS/BroadcastChannel and would crash in Bun/Node if imported from the root entry. Use the subpath that matches the environment you're targeting.
 
@@ -35,8 +37,8 @@ The split is by **runtime requirement**, not import preference: `browser` module
 ### Process & Cache Images
 
 ```typescript
-import { crypto, text } from "@valentinkolb/stdlib";
-import { images, kvStore } from "@valentinkolb/stdlib/browser";
+import { crypto, text } from "@k2b/stdlib";
+import { images, kvStore } from "@k2b/stdlib/browser";
 
 // Load, resize, and cache a user-uploaded photo
 const img = await images.create(uploadedFile);
@@ -53,7 +55,7 @@ console.log(`Cached ${text.pprintBytes(processed.size)} image`);
 ### Format Display Values
 
 ```typescript
-import { text } from "@valentinkolb/stdlib";
+import { text } from "@k2b/stdlib";
 
 text.pprintNumber(1_234_567);                       // locale-aware grouping
 text.pprintNumber(1_234_567, { compact: true });    // "1.2M" in an English locale
@@ -65,7 +67,7 @@ text.pprintDurationMs(null, { fallback: "n/a" });   // "n/a"
 ### Generate IDs and Keys
 
 ```typescript
-import { crypto } from "@valentinkolb/stdlib";
+import { crypto } from "@k2b/stdlib";
 
 const publicId = crypto.common.ulid();                       // sortable 26-char ULID
 const batchId = crypto.common.ulid({ monotonic: true });      // ordered within the same millisecond
@@ -79,7 +81,7 @@ ULIDs are sortable identifiers, not secrets. Their millisecond timestamp is visi
 ### API Data with Error Handling
 
 ```typescript
-import { result, dates, cache, searchParams } from "@valentinkolb/stdlib";
+import { result, dates, cache, searchParams } from "@k2b/stdlib";
 
 const userCache = cache.create<User>({
   ttl: 5 * 60_000,
@@ -106,7 +108,7 @@ const query = searchParams.serialize({ page: 1, active: true });
 ### Command Palette with Highlighted Matches
 
 ```typescript
-import { fuzzy } from "@valentinkolb/stdlib";
+import { fuzzy } from "@k2b/stdlib";
 
 const commands = [
   { id: "open-file", label: "Open File" },
@@ -134,7 +136,7 @@ fuzzy.closest("primry", ["primary", "secondary", "tertiary"]);
 ### Headless Syntax Highlighting
 
 ```typescript
-import { highlight } from "@valentinkolb/stdlib";
+import { highlight } from "@k2b/stdlib";
 
 // Markdown preview for textarea overlays. Returns escaped HTML with semantic classes.
 preview.innerHTML = highlight.markdown(markdownText, {
@@ -163,7 +165,7 @@ highlight.presets.sql(`SELECT id FROM users WHERE email = $1`);
 ### Dashboard with Inline SVG Charts
 
 ```typescript
-import { charts } from "@valentinkolb/stdlib";
+import { charts } from "@k2b/stdlib";
 
 // Bar chart with title, value labels, target reference, formatted axis
 const revenue = charts.bar({
@@ -212,7 +214,7 @@ document.getElementById("revenue").innerHTML = revenue;
 ### Reactive Cross-Tab Storage
 
 ```typescript
-import { kvStore } from "@valentinkolb/stdlib/browser";
+import { kvStore } from "@k2b/stdlib/browser";
 
 // Persistent OPFS-backed key-value storage (async, no 5 MB cap, cross-tab via BroadcastChannel)
 await kvStore.set("user:1", { name: "Alice", lastSeen: Date.now() });
@@ -233,8 +235,8 @@ unwatch();
 ### Interactive SolidJS Editor
 
 ```typescript
-import { mutation, timed, hotkeys } from "@valentinkolb/stdlib/solid";
-import { notifications } from "@valentinkolb/stdlib/browser";
+import { mutation, timed, hotkeys } from "@k2b/stdlib/solid";
+import { notifications } from "@k2b/stdlib/browser";
 
 const save = mutation.create({
   mutation: (doc) => api.saveDocument(doc),
@@ -259,7 +261,7 @@ docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store,
 docs/solid.md     -- mutation, hotkeys, dnd, timed, localstorage, ...
 
 # qr lives behind its own subpath because lean-qr is an optional peer dep
-import { qr } from "@valentinkolb/stdlib/qr";
+import { qr } from "@k2b/stdlib/qr";
 ```
 
 ## Development
@@ -273,7 +275,7 @@ bun run bench:dates
 ## Agent Skills
 
 ```bash
-bunx skills add github.com/ValentinKolb/stdlib
+bunx skills add github.com/k2b-dev/stdlib
 ```
 
 ## License

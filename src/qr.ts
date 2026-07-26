@@ -8,7 +8,7 @@
  * optional `lean-qr` peer dependency for consumers that don't use QR features.
  *
  * @example
- * import { qr } from "@valentinkolb/stdlib/qr";
+ * import { qr } from "@k2b/stdlib/qr";
  *
  * const data = qr.wifi({ ssid: "Office", password: "secret", encryption: "WPA" });
  * const svg = qr.toSvg(data, { correctionLevel: "M", on: "#000", off: "#fff" });

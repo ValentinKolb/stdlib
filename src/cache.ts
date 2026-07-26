@@ -17,7 +17,7 @@
  * - **Works everywhere** — no browser or server dependencies.
  *
  * @example
- * import { createCache } from "@valentinkolb/stdlib";
+ * import { createCache } from "@k2b/stdlib";
  *
  * // Simple cache with 5-minute TTL
  * const cache = createCache<User>({ ttl: 5 * 60_000 });

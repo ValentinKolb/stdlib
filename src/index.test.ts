@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // `lean-qr` is an optional peer dependency. Re-exporting `./qr` from the root
 // barrel would force every consumer to have lean-qr installed (static imports
 // are evaluated on resolution). The `qr` module is published under the
-// `@valentinkolb/stdlib/qr` subpath instead. This guard catches accidental
+// `@k2b/stdlib/qr` subpath instead. This guard catches accidental
 // re-introduction of the re-export.
 
 describe("root barrel", () => {

@@ -1,11 +1,32 @@
 # Migration guide
 
 A growing reference document for coding agents and human developers upgrading
-between releases of `@valentinkolb/stdlib`. Each version section lists exactly
+between releases of `@k2b/stdlib`. Each version section lists exactly
 what to change in consumer code, what to grep for, and concrete diff examples.
 
 When upgrading by more than one version, work through the sections in order
 (oldest → newest). Each section is independent.
+
+---
+
+## Package scope migration
+
+Starting with v0.17.0, the package and repository moved:
+
+- npm: `@valentinkolb/stdlib` -> `@k2b/stdlib`
+- GitHub: `ValentinKolb/stdlib` -> `k2b-dev/stdlib`
+
+All entry points and public APIs remain the same. Replace the package scope in
+dependencies and imports:
+
+```diff
+-import { dates } from "@valentinkolb/stdlib";
+-import { files } from "@valentinkolb/stdlib/browser";
++import { dates } from "@k2b/stdlib";
++import { files } from "@k2b/stdlib/browser";
+```
+
+The old npm package is deprecated and receives no further releases.
 
 ---
 

@@ -1,6 +1,6 @@
 # Common Patterns Across Core Modules
 
-Reusable patterns combining multiple `@valentinkolb/stdlib` modules.
+Reusable patterns combining multiple `@k2b/stdlib` modules.
 
 ---
 
@@ -9,7 +9,7 @@ Reusable patterns combining multiple `@valentinkolb/stdlib` modules.
 **When to use:** Wrapping any async operation that might fail (DB queries, HTTP calls, file I/O) so callers never deal with thrown exceptions.
 
 ```ts
-import { ok, fail, err, tryCatch } from "@valentinkolb/stdlib";
+import { ok, fail, err, tryCatch } from "@k2b/stdlib";
 
 async function getUser(id: string): Promise<Result<User>> {
   return tryCatch(
@@ -40,7 +40,7 @@ const user = result.data;
 **When to use:** Any data that is expensive to fetch but acceptable to serve slightly stale (user profiles, config, feature flags).
 
 ```ts
-import { createCache, tryCatch, err } from "@valentinkolb/stdlib";
+import { createCache, tryCatch, err } from "@k2b/stdlib";
 
 const userCache = createCache<User>({
   ttl: 5 * 60_000, // 5 minutes
@@ -69,7 +69,7 @@ Key detail: `onMiss` returning `null` means "don't cache this miss." The next `g
 **When to use:** Converting between binary and string representations for storage, transport, or interop with external systems.
 
 ```ts
-import { encoding } from "@valentinkolb/stdlib";
+import { encoding } from "@k2b/stdlib";
 
 const payload = new TextEncoder().encode("hello world");
 
@@ -114,7 +114,7 @@ Formatting a raw measured millisecond count?
 ```
 
 ```ts
-import { dates, text } from "@valentinkolb/stdlib";
+import { dates, text } from "@k2b/stdlib";
 
 // Feed message timestamps
 dates.formatDateTimeRelative(msg.createdAt); // "just now" / "4 mins ago" / "Yesterday"
@@ -169,7 +169,7 @@ const nextStartsAt = dates.addZonedInstant(event.startsAt, {
 **When to use:** Building a calendar UI with month/week views, item filtering, and navigation.
 
 ```ts
-import { dates } from "@valentinkolb/stdlib";
+import { dates } from "@k2b/stdlib";
 
 // 1. Generate the grid for the current month
 const now = new Date();
@@ -205,7 +205,7 @@ Remember: `getMonthGrid` month parameter is 0-indexed (0 = January). `WEEKDAYS_S
 **When to use:** Syncing UI state (filters, pagination, view mode) with URL query parameters for shareable/bookmarkable URLs.
 
 ```ts
-import { searchParams } from "@valentinkolb/stdlib";
+import { searchParams } from "@k2b/stdlib";
 
 type Filters = { page: number; sort: string; active: boolean };
 
@@ -237,7 +237,7 @@ Gotchas: `false`, `null`, `undefined`, and `""` all cause the param to be **dele
 **When to use:** Retry logic with backoff and jitter, or preventing UI spinner flicker on fast responses.
 
 ```ts
-import { timing } from "@valentinkolb/stdlib";
+import { timing } from "@k2b/stdlib";
 
 // Retry with exponential backoff + jitter
 async function fetchWithRetry<T>(url: string, maxRetries = 3): Promise<T> {
@@ -269,7 +269,7 @@ const data = await timing.withMinLoadTime(
 **When to use:** Transforming user-provided strings for different display contexts (URLs, headings, labels).
 
 ```ts
-import { text } from "@valentinkolb/stdlib";
+import { text } from "@k2b/stdlib";
 
 const userInput = "Hello World -- My Blog Post!";
 
@@ -312,7 +312,7 @@ text.pprintDurationMs(90_000);                   // "1m 30s"
 **When to use:** Consuming a streaming API endpoint (e.g. AI chat completions, live feeds) with typed error handling around the fetch call.
 
 ```ts
-import { streaming, result } from "@valentinkolb/stdlib";
+import { streaming, result } from "@k2b/stdlib";
 
 async function streamEvents(url: string) {
   const res = await result.tryCatch(() => fetch(url));
@@ -336,7 +336,7 @@ async function streamEvents(url: string) {
 **When to use:** Building a search-as-you-type UI where expensive lookups are debounced and results are cached to avoid refetching.
 
 ```ts
-import { timing, cache } from "@valentinkolb/stdlib";
+import { timing, cache } from "@k2b/stdlib";
 
 const searchCache = cache.create<SearchResult[]>({ ttl: 2 * 60_000 });
 

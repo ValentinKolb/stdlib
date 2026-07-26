@@ -1,9 +1,9 @@
 ---
 name: stdlib
 description: >
-  Use this skill whenever code imports from @valentinkolb/stdlib,
-  @valentinkolb/stdlib/browser, @valentinkolb/stdlib/solid, or
-  @valentinkolb/stdlib/qr, and whenever the user needs help choosing,
+  Use this skill whenever code imports from @k2b/stdlib,
+  @k2b/stdlib/browser, @k2b/stdlib/solid, or
+  @k2b/stdlib/qr, and whenever the user needs help choosing,
   using, documenting, testing, or updating stdlib utilities. Trigger broadly
   for encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
   passwords, dates, calendars, timing, streaming, Result errors, caching,
@@ -16,9 +16,9 @@ description: >
   dropzones, accessibility helpers, or stdlib release/doc/skill updates.
 ---
 
-# @valentinkolb/stdlib
+# @k2b/stdlib
 
-This is the single entry skill for all `@valentinkolb/stdlib` work. Keep this
+This is the single entry skill for all `@k2b/stdlib` work. Keep this
 file as the router and load detailed references only when the task needs them.
 
 ## Start Here
@@ -36,10 +36,10 @@ file as the router and load detailed references only when the task needs them.
 
 | Import path | Runtime | Read when |
 |---|---|---|
-| `@valentinkolb/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, text, result, cache |
-| `@valentinkolb/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
-| `@valentinkolb/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
-| `@valentinkolb/stdlib/solid` | SolidJS reactive owner required | Mutations, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
+| `@k2b/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, text, result, cache |
+| `@k2b/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
+| `@k2b/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
+| `@k2b/stdlib/solid` | SolidJS reactive owner required | Mutations, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
 
 ## Reference Routing
 
@@ -82,7 +82,7 @@ usage, read the matching detailed reference first.
 | Scatter, line, bar, pie, donut, histogram, boxplot, sparkline, gauge, bar gauge, stat, heatmap, world map with deterministic viewports, state timeline SVGs | `charts` |
 | In-memory TTL cache with optional lazy `onMiss` | `cache` |
 | Typed success/error service results | `result`, `ok`, `fail`, `err`, `unwrap`, `tryCatch` |
-| QR payloads and QR SVG rendering | `qr` from `@valentinkolb/stdlib/qr` |
+| QR payloads and QR SVG rendering | `qr` from `@k2b/stdlib/qr` |
 | Avatar SVGs and WebP data URL parsing | `svg` |
 | URL search param serialization/deserialization/change listeners | `searchParams` |
 | File icon/category lookup | `fileIcons` |

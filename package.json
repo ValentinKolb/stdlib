@@ -1,10 +1,10 @@
 {
-  "name": "@valentinkolb/stdlib",
-  "version": "0.16.0",
+  "name": "@k2b/stdlib",
+  "version": "0.17.0",
   "description": "Generic headless utility library -- crypto, encoding, dates, files, images, SolidJS primitives",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ValentinKolb/stdlib.git"
+    "url": "git+https://github.com/k2b-dev/stdlib.git"
   },
   "license": "ISC",
   "type": "module",
