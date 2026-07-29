@@ -491,6 +491,10 @@ The `create` function must be called inside a SolidJS reactive owner (registers 
 
 Changes made via `setStore` are automatically persisted to localStorage and broadcast to other tabs. Other tabs receive the update and reactively update their stores.
 
+The shared channel is created lazily on the first synchronization-capable
+`localStore` call and only when `window.BroadcastChannel` exists. Importing
+`@k2b/stdlib/solid` does not create a channel or retain a Bun process handle.
+
 ### Example
 
 ```tsx

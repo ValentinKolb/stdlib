@@ -48,14 +48,31 @@ const defaultSerializer: Serializer = {
 // Internal Sync System
 // ==========================
 
-// Global BroadcastChannel used for cross-tab synchronization of localStorage changes.
-// When a store is updated in one tab, a message is broadcast so other tabs can re-read
-// the value from storage and update their reactive stores. Falls back to null in
-// environments without BroadcastChannel support (e.g. SSR).
-const globalChannel = typeof BroadcastChannel !== "undefined"
-  ? new BroadcastChannel("localstorage-sync")
-  : null;
+// Browser-only channel used for cross-tab synchronization. It is created on
+// first localStore use rather than module evaluation because server runtimes
+// such as Bun also expose BroadcastChannel and would otherwise retain a live
+// process handle when merely importing @k2b/stdlib/solid.
+let globalChannel: BroadcastChannel | null = null;
 const listeners = new Map<string | Function, Set<ListenerCallback>>();
+
+const getGlobalChannel = (): BroadcastChannel | null => {
+  if (globalChannel) return globalChannel;
+  if (
+    typeof window === "undefined" ||
+    typeof window.BroadcastChannel !== "function"
+  ) {
+    return null;
+  }
+
+  globalChannel = new window.BroadcastChannel("localstorage-sync");
+  if (typeof globalChannel.addEventListener === "function") {
+    globalChannel.addEventListener("message", (event) => {
+      const { key } = (event as MessageEvent).data;
+      notify(key, undefined, true);
+    });
+  }
+  return globalChannel;
+};
 
 /**
  * Subscribes a callback to notifications for a specific key or a key-matching filter function.
@@ -65,6 +82,7 @@ const subscribe = (
   keyOrFilter: string | KeyFilter,
   callback: ListenerCallback,
 ): (() => void) => {
+  getGlobalChannel();
   if (!listeners.has(keyOrFilter)) listeners.set(keyOrFilter, new Set());
   listeners.get(keyOrFilter)!.add(callback);
   return () => listeners.get(keyOrFilter)?.delete(callback);
@@ -83,25 +101,18 @@ const notify = (key: string, value?: any, __fromBroadcast = false): void => {
     }
   });
   if (!__fromBroadcast) {
-    setTimeout(() => {
-      try {
-        globalChannel?.postMessage({ key });
-      } catch {
-        // Channel closed or runtime missing postMessage — ignore.
-      }
-    }, 0);
+    const channel = getGlobalChannel();
+    if (channel) {
+      setTimeout(() => {
+        try {
+          channel.postMessage({ key });
+        } catch {
+          // Channel closed or runtime missing postMessage — ignore.
+        }
+      }, 0);
+    }
   }
 };
-
-// Some runtimes (e.g. minimal Bun environments) expose `BroadcastChannel` as
-// a constructor but the instance lacks `addEventListener`. Guard against that
-// so module load never throws — cross-tab sync simply degrades to a no-op.
-if (globalChannel && typeof globalChannel.addEventListener === "function") {
-  globalChannel.addEventListener("message", (event) => {
-    const { key } = (event as MessageEvent).data;
-    notify(key, undefined, true);
-  });
-}
 
 // ==========================
 // Public API
