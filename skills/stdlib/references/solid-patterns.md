@@ -236,8 +236,10 @@ function SortableList() {
 Gotchas:
 - `draggable` auto-sets `tabindex="0"` unless `focusable: false`.
 - Use `handleSelector` to restrict drag initiation to a grip icon.
+- Native touch scrolling is preserved by default. Apply `touch-action: none` to a dedicated handle (or use `touchAction: "none"` deliberately) for unrestricted touch dragging.
+- Nested buttons, links, and form controls do not start keyboard drags unless they match `handleSelector`.
 - Ghost element is auto-cloned from the dragged element (or its `[data-dnd-preview]` child).
-- Default collision detection is "closest center"; override with `collisionDetector`.
+- Default collision detection prefers pointer containment, then the nearest center; custom detectors receive every enabled droppable.
 
 ## 6. Cross-Tab Sync
 

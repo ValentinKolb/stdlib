@@ -115,6 +115,10 @@ const { draggable, droppable, isDragging, activeId, overId } = dnd.create({
 
 Supports activation distance, touch delay, custom collision detection, intent building, handle selectors, and ARIA live announcements.
 
+The controller and its directives clean themselves up with their Solid owner; `destroy()` is also safe to call manually and permanently disables the controller. Keyboard events from nested buttons, links, and form controls do not start a drag unless they match `handleSelector`.
+
+Touch scrolling is preserved by default. For unrestricted touch dragging, apply `touch-action: none` to a dedicated handle; use the draggable's `touchAction: "none"` option only when disabling pan/zoom for the whole element is intentional. The touch delay continues asynchronously after movement, so a moved pointer can activate when the delay elapses without requiring another `pointermove`.
+
 ## detailPanel
 
 Hybrid SSR + client-side detail panel pattern. Updates URL params without page reloads and supports browser back/forward.

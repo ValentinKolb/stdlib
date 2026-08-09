@@ -265,6 +265,12 @@ versions will remove `aria-grabbed` entirely.
 provide screen-reader-friendly state. The library already wires this up to
 an off-screen ARIA live region.
 
+**Touch scrolling:** Draggables no longer receive `touch-action: none`
+unconditionally because that prevented native scrolling across mobile lists.
+Apply `touch-action: none` to a dedicated drag handle, or set the draggable's
+`touchAction: "none"` option when disabling pan/zoom for the whole element is
+intentional.
+
 ### 12. `dropzone` only fires `isDragging` for actual file drags
 
 **What changed:** Plain text/link drags no longer trigger the file-drop UI.

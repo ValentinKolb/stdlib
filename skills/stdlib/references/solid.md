@@ -275,8 +275,8 @@ dnd.create<TDragMeta, TDropMeta, TIntent>(
 | Field | Type | Description |
 |---|---|---|
 | `activationDistance?` | `number` | Pixels before drag activates (default: 6). |
-| `touchActivationDelayMs?` | `number` | Delay for touch drag activation (default: 120). |
-| `collisionDetector?` | `(ctx: DndCollisionContext) => DndId \| null` | Custom collision detection. Default uses pointer containment + nearest center. |
+| `touchActivationDelayMs?` | `number` | Delay for touch drag activation (default: 120). Continues after movement without requiring another event. |
+| `collisionDetector?` | `(ctx: DndCollisionContext) => DndId \| null` | Custom collision detection over every enabled droppable. Default prefers pointer containment, then nearest center. |
 | `buildIntent?` | `(ctx: DndBuildIntentContext) => TIntent \| null` | Build custom intent (e.g. "before"/"after" for reordering). |
 | `isSameIntent?` | `(a, b) => boolean` | Custom intent comparator. Default uses `===`. |
 | `onDragStart?` | `(ctx: DndEventContext) => void` | Fired when drag begins. |
@@ -296,7 +296,7 @@ dnd.create<TDragMeta, TDropMeta, TIntent>(
 | `intent` | `Accessor<TIntent \| null>` | Current drop intent. |
 | `isDragging` | `Accessor<boolean>` | Whether a drag is active. |
 | `cancel` | `() => void` | Programmatically cancel the drag. |
-| `destroy` | `() => void` | Tear down all listeners and state. |
+| `destroy` | `() => void` | Permanently tear down all listeners and state. Also runs automatically with the Solid owner. |
 
 **DndDraggableConfig:**
 
@@ -308,6 +308,7 @@ dnd.create<TDragMeta, TDropMeta, TIntent>(
 | `focusable?` | `boolean` | Auto-add to tab order (default: true). Set false if wrapping interactive elements. |
 | `keyboard?` | `boolean` | Enable keyboard drag (Space/Enter to start, Arrows to move, Escape to cancel). |
 | `handleSelector?` | `string` | CSS selector restricting drag start to a handle element. |
+| `touchAction?` | `string` | Optional inline `touch-action` while mounted. Omit to preserve native touch scrolling. |
 
 **DndDroppableConfig:**
 
@@ -340,6 +341,8 @@ Data attributes set automatically: `data-dnd-draggable`, `data-dnd-droppable`, `
 
 Ghost element: clones the source element (or its `[data-dnd-preview]` child) as a fixed-position overlay. Supports `data-dnd-count` attribute for badge rendering.
 
+Nested interactive controls do not start keyboard drags unless they match `handleSelector`. For mobile lists, preserve scrolling on the item and apply `touch-action: none` only to a dedicated drag handle (or set `touchAction: "none"` when disabling native pan/zoom for the whole draggable is intentional).
+
 ### Example
 
 ```tsx
@@ -371,7 +374,7 @@ const { draggable, droppable, isDragging, activeId, overId } = dnd.create<
 
 // Use with a drag handle
 <div use:draggable={{ id: "item-2", meta: { label: "Task 2" }, handleSelector: "[data-drag-handle]" }}>
-  <span data-drag-handle>Grip</span>
+  <span data-drag-handle style={{ "touch-action": "none" }}>Grip</span>
   <span>Content</span>
 </div>
 

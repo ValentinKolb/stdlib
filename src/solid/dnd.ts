@@ -20,6 +20,11 @@ export type DndDraggableConfig<TDragMeta> = {
   keyboard?: boolean;
   /** Optional CSS selector that must match the pointerdown target (or one of its ancestors) to start drag. */
   handleSelector?: string;
+  /**
+   * Optional inline `touch-action` while mounted (for example `"none"` on a dedicated drag handle).
+   * Omit to preserve the element's existing touch/scroll behavior.
+   */
+  touchAction?: string;
 };
 
 export type DndDroppableConfig<TDropMeta> = {
@@ -173,6 +178,7 @@ const createLiveRegion = () => {
   }
 
   const element = document.createElement("div");
+  element.setAttribute("role", "status");
   element.setAttribute("aria-live", "polite");
   element.setAttribute("aria-atomic", "true");
   element.style.position = "fixed";
@@ -186,14 +192,18 @@ const createLiveRegion = () => {
   element.style.border = "0";
   document.body.appendChild(element);
 
+  let active = true;
   const announce = (message: string) => {
+    if (!active) return;
     element.textContent = "";
     queueMicrotask(() => {
+      if (!active) return;
       element.textContent = message;
     });
   };
 
   const destroy = () => {
+    active = false;
     element.remove();
   };
 
@@ -268,7 +278,8 @@ const getPointerFromEvent = (event: PointerEvent): DndPointer => ({ x: event.cli
  * - Attaches `pointermove`, `pointerup`, and `pointercancel` listeners on `window`
  *   while a drag is pending or active.
  * - Mutates DOM: sets `opacity`, `data-dnd-active`, `data-dnd-*` attributes,
- *   `tabindex`, and `user-select` on source elements and `document.documentElement`.
+ *   `tabindex`, optional configured `touch-action`, and `user-select` on source
+ *   elements and `document.documentElement`.
  *   `aria-grabbed` is also set for backward compatibility but is deprecated
  *   (removed from ARIA 1.2); target `[data-dnd-active]` in new CSS.
  * - Appends a ghost element and an ARIA live region to `document.body`.
@@ -331,6 +342,8 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
   let keyboardOverIndex = 0;
   let ghost: HTMLElement | null = null;
   let restoreUserSelect: (() => void) | null = null;
+  let touchActivationTimer: ReturnType<typeof setTimeout> | null = null;
+  const directiveCleanups = new Set<() => void>();
   const liveRegion = createLiveRegion();
 
   const announce = (message: string | null | undefined) => {
@@ -338,22 +351,36 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     liveRegion.announce(message);
   };
 
-  /**
-   * Call a user-supplied callback while swallowing exceptions, so a buggy
-   * callback can't leave the controller in a half-cleared state (ghost stuck,
-   * source-opacity stuck at 0.35, etc). Errors are logged but don't propagate.
-   */
+  /** Runs user code without letting it interrupt the controller state machine. */
+  const safeCompute = <TArgs extends unknown[], TResult>(
+    fn: ((...args: TArgs) => TResult) | undefined,
+    args: TArgs,
+    fallback: TResult,
+    label: string,
+  ): TResult => {
+    if (!fn) return fallback;
+    try {
+      return fn(...args);
+    } catch (error) {
+      console.error(`dnd: ${label} threw:`, error);
+      return fallback;
+    }
+  };
+
   const safeCall = <T extends unknown[]>(
-    fn: ((...args: T) => unknown) | undefined,
+    fn: ((...args: T) => void) | undefined,
     args: T,
     label: string,
   ): void => {
-    if (!fn) return;
-    try {
-      fn(...args);
-    } catch (e) {
-      console.error(`dnd: ${label} threw:`, e);
-    }
+    safeCompute(fn, args, undefined, label);
+  };
+
+  const safeAnnouncement = <T extends unknown[]>(
+    fn: ((...args: T) => string) | undefined,
+    args: T,
+    label: string,
+  ) => {
+    announce(safeCompute(fn, args, "", label));
   };
 
   const getDroppableSnapshots = (currentPointer: DndPointer): DndDroppableSnapshot<TDropMeta>[] => {
@@ -398,36 +425,48 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     if (!activeDrag) return;
 
     const droppableSnapshots = getDroppableSnapshots(pointer);
-    const collisionPool =
-      activeDrag.mode === "pointer" ? droppableSnapshots.filter((entry) => entry.containsPointer) : droppableSnapshots;
     const nextOverId =
-      collisionPool.length === 0
+      droppableSnapshots.length === 0
         ? null
-        : detectCollision({
-            active: activeDrag.snapshot,
-            pointer,
-            droppables: collisionPool,
-            previousOverId: overId(),
-            previousIntent: intent(),
-          });
+        : safeCompute(
+            detectCollision,
+            [
+              {
+                active: activeDrag.snapshot,
+                pointer,
+                droppables: droppableSnapshots,
+                previousOverId: overId(),
+                previousIntent: intent(),
+              },
+            ],
+            null,
+            "collisionDetector",
+          );
     const nextOver = nextOverId ? droppableSnapshots.find((entry) => entry.id === nextOverId) ?? null : null;
 
     const nextIntent = options.buildIntent
-      ? options.buildIntent({
-          active: activeDrag.snapshot,
-          over: nextOver,
-          pointer,
-          previousIntent: intent(),
-        })
+      ? safeCompute(
+          options.buildIntent,
+          [
+            {
+              active: activeDrag.snapshot,
+              over: nextOver,
+              pointer,
+              previousIntent: intent(),
+            },
+          ],
+          null,
+          "buildIntent",
+        )
       : null;
 
     const overChanged = nextOverId !== overId();
     if (overChanged) {
       setOverId(nextOverId);
-      announce(options.announcements?.dragOver?.(activeDrag.snapshot, nextOver));
+      safeAnnouncement(options.announcements?.dragOver, [activeDrag.snapshot, nextOver], "announcements.dragOver");
     }
 
-    const intentChanged = !compareIntent(intent(), nextIntent);
+    const intentChanged = !safeCompute(compareIntent, [intent(), nextIntent], false, "isSameIntent");
     if (intentChanged) {
       setIntent(() => nextIntent);
     }
@@ -471,6 +510,12 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     }
   };
 
+  const clearTouchActivationTimer = () => {
+    if (touchActivationTimer === null) return;
+    clearTimeout(touchActivationTimer);
+    touchActivationTimer = null;
+  };
+
   /**
    * Temporarily disables global text selection while pointer-drag is pending/active.
    * This prevents accidental full-page text highlights during drag gestures.
@@ -498,9 +543,20 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     activeDrag.source.element.style.opacity = activeDrag.sourceOpacity;
   };
 
+  const releasePointerCapture = () => {
+    if (!activeDrag || activeDrag.pointerId === null) return;
+    try {
+      activeDrag.source.element.releasePointerCapture(activeDrag.pointerId);
+    } catch {
+      // Pointer capture may already have ended or the source may be detached.
+    }
+  };
+
   const clearSession = () => {
+    clearTouchActivationTimer();
     clearGhost();
     resetSourceOpacity();
+    releasePointerCapture();
     activeDrag = null;
     pendingPointer = null;
     unlockSelection();
@@ -549,7 +605,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       updateGhost(pointer);
     }
 
-    announce(options.announcements?.dragStart?.(activeDrag.snapshot));
+    safeAnnouncement(options.announcements?.dragStart, [activeDrag.snapshot], "announcements.dragStart");
 
     const initialDroppables = getDroppableSnapshots(pointer);
     const sorted = sortDroppablesForKeyboard(initialDroppables);
@@ -592,7 +648,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       // Clear state BEFORE invoking the user callback so a synchronous
       // unmount inside the callback can't observe the half-state.
       clearSession();
-      announce(options.announcements?.cancel?.(snapshot));
+      safeAnnouncement(options.announcements?.cancel, [snapshot], "announcements.cancel");
       safeCall(options.onCancel, [ctx], "onCancel");
       return;
     }
@@ -605,7 +661,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     // onDrop previously fired both onDrop and (through onCleanup → cancel)
     // an onCancel for the same drag — contradictory events.
     clearSession();
-    announce(options.announcements?.drop?.(snapshot, currentOver));
+    safeAnnouncement(options.announcements?.drop, [snapshot, currentOver], "announcements.drop");
     safeCall(options.onDrop, [ctx], "onDrop");
   };
 
@@ -615,6 +671,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     // before drag activation crosses the threshold (e.g. programmatic cancel
     // via Escape hotkey while pointer is pressed but unmoved).
     if (pendingPointer && !activeDrag) {
+      clearTouchActivationTimer();
       pendingPointer = null;
       unlockSelection();
       clearPointerListeners();
@@ -630,16 +687,16 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     const ctx = { mode, active: snapshot, over: currentOver, intent: intent(), pointer };
     clearSession();
     clearPointerListeners();
-    announce(options.announcements?.cancel?.(snapshot));
+    safeAnnouncement(options.announcements?.cancel, [snapshot], "announcements.cancel");
     safeCall(options.onCancel, [ctx], "onCancel");
   };
 
-  const maybeStartPendingPointerDrag = (event: PointerEvent) => {
+  const maybeStartPendingPointerDrag = (pointerId: number) => {
     if (!pendingPointer || activeDrag) return;
-    if (event.pointerId !== pendingPointer.pointerId) return;
+    if (pointerId !== pendingPointer.pointerId) return;
 
-    const dx = event.clientX - pendingPointer.startX;
-    const dy = event.clientY - pendingPointer.startY;
+    const dx = pointer.x - pendingPointer.startX;
+    const dy = pointer.y - pendingPointer.startY;
     const distance = Math.sqrt(dx * dx + dy * dy);
     const elapsed = Date.now() - pendingPointer.startedAt;
 
@@ -648,20 +705,30 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       return;
     }
 
+    const pending = pendingPointer;
+    if (pending.record.getConfig().disabled) {
+      clearTouchActivationTimer();
+      pendingPointer = null;
+      unlockSelection();
+      clearPointerListeners();
+      return;
+    }
+    clearTouchActivationTimer();
+    pendingPointer = null;
     beginDrag({
-      record: pendingPointer.record,
+      record: pending.record,
       mode: "pointer",
-      pointerId: pendingPointer.pointerId,
-      pointerType: pendingPointer.pointerType,
-      offsetX: pendingPointer.offsetX,
-      offsetY: pendingPointer.offsetY,
+      pointerId: pending.pointerId,
+      pointerType: pending.pointerType,
+      offsetX: pending.offsetX,
+      offsetY: pending.offsetY,
     });
   };
 
   const onWindowPointerMove = (event: PointerEvent) => {
     if (pendingPointer && event.pointerId === pendingPointer.pointerId) {
       pointer = getPointerFromEvent(event);
-      maybeStartPendingPointerDrag(event);
+      maybeStartPendingPointerDrag(event.pointerId);
     }
 
     if (!activeDrag || activeDrag.mode !== "pointer") return;
@@ -675,6 +742,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
 
   const onWindowPointerUp = (event: PointerEvent) => {
     if (pendingPointer && event.pointerId === pendingPointer.pointerId && !activeDrag) {
+      clearTouchActivationTimer();
       pendingPointer = null;
       unlockSelection();
       clearPointerListeners();
@@ -690,6 +758,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
 
   const onWindowPointerCancel = (event: PointerEvent) => {
     if (pendingPointer && event.pointerId === pendingPointer.pointerId && !activeDrag) {
+      clearTouchActivationTimer();
       pendingPointer = null;
       unlockSelection();
       clearPointerListeners();
@@ -703,14 +772,26 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     clearPointerListeners();
   };
 
+  const cancelSourceSession = (record: DraggableRecord<TDragMeta>) => {
+    if (activeDrag?.source === record) {
+      cancel();
+      return;
+    }
+    if (pendingPointer?.record !== record) return;
+    clearTouchActivationTimer();
+    pendingPointer = null;
+    unlockSelection();
+    clearPointerListeners();
+  };
+
   const handleKeyboardDrag = (event: KeyboardEvent, record: DraggableRecord<TDragMeta>) => {
     const config = record.getConfig();
-    if (config.disabled) return;
 
     const isTriggerKey = event.key === " " || event.key === "Enter";
     const isArrowKey = event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowRight";
 
     if (!activeDrag && isTriggerKey) {
+      if (config.disabled) return;
       // Anchor the keyboard "pointer" at the element's geometric center so
       // initial collision detection picks up the correct droppable.
       // Previously a hardcoded +4px offset put the cursor in the top-left
@@ -736,7 +817,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       return;
     }
 
-    if (!activeDrag || activeDrag.mode !== "keyboard" || activeDrag.snapshot.id !== config.id) return;
+    if (!activeDrag || activeDrag.mode !== "keyboard" || activeDrag.source !== record) return;
 
     if (event.key === "Escape") {
       cancel();
@@ -781,6 +862,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
    * ```
    */
   const draggable = (element: HTMLElement, accessor: Accessor<DndDraggableConfig<TDragMeta>>) => {
+    if (destroyed) return;
     let current = accessor();
     const record: DraggableRecord<TDragMeta> = {
       id: current.id,
@@ -797,6 +879,21 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     }
     draggables.set(record.id, record);
 
+    const matchesHandleTarget = (target: EventTarget | null, selector: string): boolean => {
+      try {
+        const candidate =
+          target instanceof Element
+            ? target
+            : target instanceof Node
+              ? target.parentElement
+              : null;
+        return !!candidate?.closest(selector) && element.contains(candidate);
+      } catch (error) {
+        console.error("dnd: handleSelector invalid:", error);
+        return false;
+      }
+    };
+
     const onPointerDown = (event: PointerEvent) => {
       if (destroyed) return;
       // Guard against a second pointer triggering a fresh pending-pointer
@@ -810,22 +907,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       if (event.isPrimary === false) return;
 
       if (config.handleSelector) {
-        try {
-          const target =
-            event.target instanceof Element
-              ? event.target
-              : event.target instanceof Node
-                ? event.target.parentElement
-                : null;
-          if (!target?.closest(config.handleSelector) || !element.contains(target)) {
-            return;
-          }
-        } catch (e) {
-          // Malformed handleSelector (e.g. invalid CSS) — fall back to
-          // ignoring the drag rather than crashing the entire pointer flow.
-          console.error("dnd: handleSelector invalid:", e);
-          return;
-        }
+        if (!matchesHandleTarget(event.target, config.handleSelector)) return;
       } else if (isInteractiveTarget(event.target)) {
         return;
       }
@@ -844,6 +926,13 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       };
       lockSelection();
 
+      if (event.pointerType === "touch" && touchActivationDelayMs > 0) {
+        touchActivationTimer = setTimeout(() => {
+          touchActivationTimer = null;
+          maybeStartPendingPointerDrag(event.pointerId);
+        }, touchActivationDelayMs);
+      }
+
       // setPointerCapture routes all subsequent pointer events to this
       // element until the pointer is released, even if it leaves the
       // viewport or the element. Without this we'd miss pointerup events
@@ -860,13 +949,19 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (destroyed) return;
       const config = record.getConfig();
       if (config.keyboard === false) return;
+      if (!activeDrag) {
+        if (config.handleSelector && !matchesHandleTarget(event.target, config.handleSelector)) return;
+        if (!config.handleSelector && event.target !== element && isInteractiveTarget(event.target)) return;
+      }
       handleKeyboardDrag(event, record);
     };
 
     // Disable browser-native drag previews (e.g. links/images) so DnD stays app-controlled.
     const onDragStart = (event: DragEvent) => {
+      if (destroyed) return;
       event.preventDefault();
     };
 
@@ -875,12 +970,24 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     element.addEventListener("dragstart", onDragStart);
     element.setAttribute("data-dnd-draggable", "true");
 
-    // Disable browser-native touch gestures (scroll, pinch-zoom) on
-    // draggable elements. Without this, touch drags on mobile compete with
-    // the browser's scroll handling — first touchmove cancels the drag.
-    // Preserve any pre-existing value so we can restore on cleanup.
+    const previousTabIndex = element.getAttribute("tabindex");
     const prevTouchAction = element.style.touchAction;
-    element.style.touchAction = "none";
+
+    const applyFocusable = (next: DndDraggableConfig<TDragMeta>) => {
+      if (next.focusable === false) {
+        if (previousTabIndex === null) element.removeAttribute("tabindex");
+        else element.setAttribute("tabindex", previousTabIndex);
+        return;
+      }
+      if (element.tabIndex < 0) element.tabIndex = 0;
+    };
+
+    const applyTouchAction = (next: DndDraggableConfig<TDragMeta>) => {
+      element.style.touchAction = next.touchAction ?? prevTouchAction;
+    };
+
+    applyFocusable(current);
+    applyTouchAction(current);
 
     // Mark <img>/<a> descendants as non-draggable so the browser's native
     // drag-and-drop doesn't compete with ours (it would otherwise fire
@@ -895,24 +1002,26 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     createEffect(() => {
       const next = accessor();
       if (next.id !== record.id) {
-        draggables.delete(record.id);
+        cancelSourceSession(record);
+        if (draggables.get(record.id) === record) draggables.delete(record.id);
         record.id = next.id;
+        if (draggables.has(record.id)) {
+          console.warn(
+            `dnd: duplicate draggable id "${String(record.id)}" — the previous registration will be overwritten`,
+          );
+        }
         draggables.set(record.id, record);
       }
       current = next;
+      if (next.disabled) cancelSourceSession(record);
     });
 
     createEffect(() => {
-      const next = accessor();
-      if (next.focusable === false) {
-        if (element.getAttribute("tabindex") === "0") {
-          element.removeAttribute("tabindex");
-        }
-        return;
-      }
-      if (element.tabIndex < 0) {
-        element.tabIndex = 0;
-      }
+      applyFocusable(accessor());
+    });
+
+    createEffect(() => {
+      applyTouchAction(accessor());
     });
 
     createEffect(() => {
@@ -924,15 +1033,17 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       element.setAttribute("data-dnd-active", isActive ? "true" : "false");
     });
 
-    onCleanup(() => {
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      directiveCleanups.delete(cleanup);
       // If this draggable is currently being dragged when its component
       // unmounts, fire cancel BEFORE removing it from the registry — so
       // consumers get a clear "drag aborted" signal rather than a silent
       // disappearance.
-      if (activeDrag?.snapshot.id === record.id) {
-        cancel();
-      }
-      draggables.delete(record.id);
+      cancelSourceSession(record);
+      if (draggables.get(record.id) === record) draggables.delete(record.id);
       element.removeEventListener("pointerdown", onPointerDown);
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("dragstart", onDragStart);
@@ -941,12 +1052,16 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       element.removeAttribute("data-dnd-draggable");
       element.removeAttribute("data-dnd-active");
       element.removeAttribute("aria-grabbed");
+      if (previousTabIndex === null) element.removeAttribute("tabindex");
+      else element.setAttribute("tabindex", previousTabIndex);
       element.style.touchAction = prevTouchAction;
       for (const { el, prev } of restoreChildDraggable) {
         if (prev === null) el.removeAttribute("draggable");
         else el.setAttribute("draggable", prev);
       }
-    });
+    };
+    directiveCleanups.add(cleanup);
+    onCleanup(cleanup);
   };
 
   /**
@@ -960,6 +1075,7 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
    * ```
    */
   const droppable = (element: HTMLElement, accessor: Accessor<DndDroppableConfig<TDropMeta>>) => {
+    if (destroyed) return;
     let current = accessor();
     const record: DroppableRecord<TDropMeta> = {
       id: current.id,
@@ -978,8 +1094,13 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     createEffect(() => {
       const next = accessor();
       if (next.id !== record.id) {
-        droppables.delete(record.id);
+        if (droppables.get(record.id) === record) droppables.delete(record.id);
         record.id = next.id;
+        if (droppables.has(record.id)) {
+          console.warn(
+            `dnd: duplicate droppable id "${String(record.id)}" — the previous registration will be overwritten`,
+          );
+        }
         droppables.set(record.id, record);
       }
       current = next;
@@ -990,11 +1111,17 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
       element.setAttribute("data-dnd-over", isOver ? "true" : "false");
     });
 
-    onCleanup(() => {
-      droppables.delete(record.id);
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      directiveCleanups.delete(cleanup);
+      if (droppables.get(record.id) === record) droppables.delete(record.id);
       element.removeAttribute("data-dnd-droppable");
       element.removeAttribute("data-dnd-over");
-    });
+    };
+    directiveCleanups.add(cleanup);
+    onCleanup(cleanup);
   };
 
   const destroy = () => {
@@ -1007,16 +1134,20 @@ const createDnd = <TDragMeta, TDropMeta, TIntent>(
     if (activeDrag) {
       cancel();
     } else if (pendingPointer) {
+      clearTouchActivationTimer();
       pendingPointer = null;
       unlockSelection();
       clearPointerListeners();
     }
     unlockSelection();
     clearPointerListeners();
+    for (const cleanup of [...directiveCleanups]) cleanup();
     draggables.clear();
     droppables.clear();
     liveRegion.destroy();
   };
+
+  onCleanup(destroy);
 
   return {
     draggable,
