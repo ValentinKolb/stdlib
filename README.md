@@ -28,7 +28,7 @@ bun add solid-js lean-qr
 | `@k2b/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
 | `@k2b/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@k2b/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
-| `@k2b/stdlib/solid` | SolidJS | mutation, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
+| `@k2b/stdlib/solid` | SolidJS | mutation, query, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
 
 The split is by **runtime requirement**, not import preference: `browser` modules touch DOM/OPFS/BroadcastChannel and would crash in Bun/Node if imported from the root entry. Use the subpath that matches the environment you're targeting.
 
@@ -235,8 +235,14 @@ unwatch();
 ### Interactive SolidJS Editor
 
 ```typescript
-import { mutation, timed, hotkeys } from "@k2b/stdlib/solid";
+import { mutation, query, timed, hotkeys } from "@k2b/stdlib/solid";
 import { notifications } from "@k2b/stdlib/browser";
+
+const documentQuery = query.create({
+  source: () => documentId(),
+  initial: { source: props.documentId, data: props.document },
+  load: (id, { abortSignal }) => api.loadDocument(id, abortSignal),
+});
 
 const save = mutation.create({
   mutation: (doc) => api.saveDocument(doc),
@@ -258,7 +264,7 @@ hotkeys.create({
 ```
 docs/core.md      -- encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, streaming, ...
 docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store, theme
-docs/solid.md     -- mutation, hotkeys, dnd, timed, localstorage, ...
+docs/solid.md     -- mutation, query, hotkeys, dnd, timed, localstorage, ...
 
 # qr lives behind its own subpath because lean-qr is an optional peer dep
 import { qr } from "@k2b/stdlib/qr";

@@ -3,14 +3,14 @@
 All primitives are imported from a single entry point:
 
 ```ts
-import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
+import { mutation, query, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
 ```
 
 ## Key Patterns
 
 - All primitives that register listeners or timers auto-cleanup via SolidJS `onCleanup`.
 - Most `create` functions must be called inside a SolidJS component or reactive owner (`createRoot`).
-- Each module is exported as a namespace object with static methods (e.g. `mutation.create(...)`, `timed.debounce(...)`).
+- Each module is exported as a namespace object with static methods (e.g. `mutation.create(...)`, `query.create(...)`, `timed.debounce(...)`).
 
 ---
 
@@ -91,6 +91,89 @@ return (
 - **Reactive owner**: `mutation.create()` can be used outside a component or `createRoot`; it registers no owner-bound cleanup.
 - **Concurrent mutations**: when `mutate()` is called while a previous mutation is in-flight, the older mutation's result is silently dropped on resolution — the newer mutation is always the source of truth. Previously a slow-resolving older call could overwrite a fresh `data` signal.
 - **Abort routing**: when the mutation function throws an `AbortError` (e.g. `fetch` aborted via the `abortSignal`), `onAbort` fires — not `onError`. Same when `abort()` is called explicitly. `onError` is reserved for genuine failures.
+
+---
+
+## query
+
+Owner-local canonical reads with source changes, optional initial snapshots, last-good data,
+refresh, invalidation, pause, subscription cleanup, and infinite pagination. There is no global
+query client, shared cache, cache key registry, persistence, or cross-owner request deduplication.
+
+Both query variants require a SolidJS reactive owner. Loads and subscriptions start after the
+owner mounts on the client, never during server rendering. SSR data is optional and can be
+provided through `initial`.
+
+### query.create
+
+```ts
+query.create<TSource, TData, TInvalidation = void>(
+  options: QueryOptions<TSource, TData, TInvalidation>
+): QueryResult<TData, TInvalidation>
+```
+
+Important options:
+
+| Field | Description |
+|---|---|
+| `source` | Reactive accessor for the current canonical source. |
+| `load` | Transport-neutral async loader receiving the source, `abortSignal`, and cause. |
+| `initial?` | Optional `{ source, data }` snapshot. Matching data suppresses the first request. |
+| `enabled?` | Reactive pause accessor. Pending invalidations wait while false. |
+| `isSameSource?` | Source comparator; defaults to `Object.is`. |
+| `subscribe?` | Stable owner-scoped setup called once with `invalidate`; may return cleanup. |
+
+The result exposes `data`, `error`, `loading`, `refreshing`, `stale`, `refresh`, `invalidate`,
+and `abort`.
+
+```tsx
+const workspace = query.create({
+  source: () => requestUrl(),
+  initial: { source: props.requestUrl, data: props.data },
+  enabled: () => !dialogOpen(),
+  load: async (url, { abortSignal }) => {
+    const response = await fetch(url, { signal: abortSignal });
+    if (!response.ok) throw new Error("Could not load workspace");
+    return response.json();
+  },
+});
+```
+
+Without matching initial data, the query loads automatically after client mount. A source change
+aborts the old request and loads the new source while preserving last-good data. `loading()` is
+reserved for a request without data; `refreshing()` means last-good data remains renderable.
+
+`invalidate(meta)` is microtask-coalesced and returns one Promise per call. Each Promise resolves
+only after a successful request that started after that invalidation. Invalidations received
+during request A require one coalesced follow-up request B. Covered invalidations reject if their
+load fails, the source changes, the query is aborted, or the owner is disposed.
+
+`refresh()` and Infinite `loadMore()` resolve when their attempt settles and report load failures
+through `error()`. Only `invalidate()` rejects because it represents successful snapshot coverage
+for adapter acknowledgement.
+
+### query.createInfinite
+
+```ts
+query.createInfinite<TSource, TPage, TCursor, TInvalidation = void>({
+  source,
+  initial: { source: initialSource, pages: initialPages },
+  loadPage: (source, { cursor, abortSignal, cause }) => loadPage(source, cursor, abortSignal),
+  getNextCursor: (page) => page.nextCursor,
+});
+```
+
+The result replaces `data` with `pages` and additionally exposes `loadingMore`, `hasMore`, and
+`loadMore`. First-page loads use `cursor: undefined`. Parallel `loadMore()` calls share one
+request. Canonical refreshes and invalidations supersede load-more and rebuild the currently
+loaded page count from page one, following newly returned cursors. The complete new page chain is
+committed atomically; an early terminal cursor may produce fewer pages. A source change loads only
+the new first page and keeps the old page chain renderable until that page commits. Setting
+`enabled` to false aborts an active load-more and preserves the last-good page chain.
+
+stdlib never flattens or deduplicates page items. Pagination cursors remain separate from opaque
+invalidation metadata such as event cursors. Viewport observation, transport lifecycle,
+authorization, reconnect, retry/backoff, and cursor acknowledgement remain consumer-owned.
 
 ---
 

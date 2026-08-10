@@ -1,7 +1,7 @@
 # Solid Modules
 
 ```ts
-import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
+import { mutation, query, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
 ```
 
 All exports require SolidJS. Primitives that register lifecycle cleanup must be called inside a
@@ -36,6 +36,76 @@ retry();   // retry with same args (skips onBefore)
 ```
 
 Signals: `data()`, `error()`, `loading()` are all reactive.
+
+## query
+
+Owner-local canonical reads with source changes, optional initial data, refresh,
+invalidation, abort, last-good data, and infinite pagination. Queries do not share a
+global cache or deduplicate requests across owners.
+
+```tsx
+import { query } from "@k2b/stdlib/solid";
+
+const workspace = query.create({
+  source: () => requestUrl(),
+  initial: {
+    source: props.requestUrl,
+    data: props.data,
+  },
+  enabled: () => !dialogOpen(),
+  load: async (url, { abortSignal, cause }) => {
+    const response = await fetch(url, { signal: abortSignal });
+    if (!response.ok) throw new Error("Could not load workspace");
+    return response.json();
+  },
+});
+```
+
+Matching initial data suppresses the first request. Without `initial`, the current source
+loads automatically after the owner mounts on the client. Server rendering never starts a
+load or subscription; SSR data is optional and is passed through `initial` when available.
+Source changes load automatically and keep last-good data renderable until the new source
+commits. Use `isSameSource` when source identity needs semantic comparison instead of
+`Object.is`.
+
+`loading()` means no data is available yet; `refreshing()` means a request is running while
+last-good data remains renderable. `invalidate(meta)` marks the query stale and returns a
+Promise that resolves only after a covering snapshot commits. Covered invalidations reject
+when their load fails, the source changes, or the owner is disposed.
+
+`refresh()` and `loadMore()` resolve when their attempt settles; load errors are exposed
+through `error()`. Only `invalidate()` rejects because its Promise represents successful
+coverage for cursor acknowledgement or similar adapter bookkeeping.
+
+An optional `subscribe` callback is set up once for the owner and may call `invalidate`.
+Transport setup, message parsing, authorization, cursor interpretation, and retry policy stay
+in the adapter. The returned cleanup runs exactly once on owner disposal.
+
+### Infinite queries
+
+```tsx
+const conversations = query.createInfinite({
+  source: () => ({ mailboxId: props.mailboxId, folderId: folderId() }),
+  initial: {
+    source: props.initialSource,
+    pages: [props.initialPage],
+  },
+  loadPage: (source, { cursor, abortSignal }) =>
+    api.loadConversations({ ...source, cursor, signal: abortSignal }),
+  getNextCursor: (page) => page.nextCursor,
+  isSameSource: (left, right) =>
+    left.mailboxId === right.mailboxId && left.folderId === right.folderId,
+});
+
+const items = () => conversations.pages().flatMap((page) => page.items);
+```
+
+`loadMore()` coalesces parallel calls and appends one page. Canonical refreshes and
+invalidations rebuild the currently loaded page count from page one with newly returned
+cursors, then commit the complete chain atomically. stdlib does not flatten or deduplicate
+page items and does not observe the DOM for infinite scroll. A source change loads only the
+first page of the new source while keeping the old chain renderable until that page commits.
+Pausing through `enabled` aborts an active `loadMore()` without changing the last-good pages.
 
 ## timed
 

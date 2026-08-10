@@ -12,7 +12,7 @@ description: >
   sparklines, QR codes, file icons, gradients, SVG avatars, browser file
   downloads, ZIP archives, file pickers, OPFS, image processing, cookies,
   clipboard, notifications, browser kvStore, theme toggling, SolidJS
-  mutations, hotkeys, drag-and-drop, localStorage sync, click-outside,
+  mutations, owner-local queries, infinite queries, hotkeys, drag-and-drop, localStorage sync, click-outside,
   dropzones, accessibility helpers, or stdlib release/doc/skill updates.
 ---
 
@@ -28,7 +28,7 @@ file as the router and load detailed references only when the task needs them.
    advice.
 3. Prefer the existing namespace-object API style (`crypto.common.ulid()`,
    `charts.sparkline()`, `files.downloadFileFromContent()`,
-   `mutation.create()`).
+   `mutation.create()`, `query.create()`).
 4. For repo changes, verify with the narrowest relevant tests first, then run
    broader checks only when the change touches shared behavior.
 
@@ -39,7 +39,7 @@ file as the router and load detailed references only when the task needs them.
 | `@k2b/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, text, result, cache |
 | `@k2b/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
 | `@k2b/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
-| `@k2b/stdlib/solid` | SolidJS; reactive owner where noted | Mutations, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
+| `@k2b/stdlib/solid` | SolidJS; reactive owner where noted | Mutations, owner-local queries, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
 
 ## Reference Routing
 
@@ -49,7 +49,7 @@ Load exactly the files needed for the task:
 |---|---|
 | Complete root API: encoding, crypto, password, dates, timing, streaming, text, fuzzy, highlight, charts, cache, result, QR, SVG, searchParams, fileIcons, gradients | `references/core.md` |
 | Browser API: files, images, cookies, clipboard, notifications, kvStore, theme | `references/browser.md` |
-| SolidJS API: mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y | `references/solid.md` |
+| SolidJS API: mutation, query, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y | `references/solid.md` |
 | Crypto/security usage decisions, ULID caveats, symmetric/asymmetric/TOTP guidance | `references/core-crypto-guide.md` |
 | Cross-module core recipes | `references/core-patterns.md` |
 | Browser image pipeline details | `references/browser-images-guide.md` |
@@ -105,6 +105,7 @@ usage, read the matching detailed reference first.
 | User needs | Module |
 |---|---|
 | Async mutation controller with loading/error/abort/retry | `mutation` |
+| Owner-local reads with source changes, refresh, invalidation, last-good data, or infinite pagination | `query` |
 | Lifecycle-aware debounce and interval timers | `timed` |
 | Global keyboard shortcut registry | `hotkeys` |
 | Pointer and keyboard drag-and-drop | `dnd` |

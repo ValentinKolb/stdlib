@@ -1,4 +1,5 @@
 export * from "./mutation";
+export * from "./query";
 export * from "./timed";
 export * from "./hotkeys";
 export * from "./dnd";

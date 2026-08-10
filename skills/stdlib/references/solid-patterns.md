@@ -10,12 +10,13 @@ automatically via `onCleanup`.
 
 ```tsx
 import { createRoot } from "solid-js";
-import { mutation, timed, clipboard } from "@k2b/stdlib/solid";
+import { mutation, query, timed, clipboard } from "@k2b/stdlib/solid";
 
 // Inside a component -- cleanup is automatic
 function MyComponent() {
   const { copy, wasCopied } = clipboard.create();          // OK
   const { mutate } = mutation.create({ mutation: fetchData }); // OK
+  const items = query.create({ source: () => "/items", load: fetchItems }); // OK
   const { debouncedFn } = timed.debounce(save, 500);       // OK
   return <div>...</div>;
 }
@@ -429,13 +430,68 @@ function OfflineNote() {
 }
 ```
 
-## 9. Common Gotchas
+## 9. Owner-local Query Reads
+
+Use `query.create` for canonical reads and `mutation.create` for user-initiated writes. A query
+belongs to the Solid owner that creates it; equal sources in different owners do not share data
+or requests.
+
+```tsx
+const items = query.create({
+  source: () => `/api/items?filter=${encodeURIComponent(filter())}`,
+  initial: { source: props.requestUrl, data: props.items },
+  load: async (url, { abortSignal }) => {
+    const response = await fetch(url, { signal: abortSignal });
+    if (!response.ok) throw new Error("Could not load items");
+    return response.json();
+  },
+});
+```
+
+Matching initial data is treated as the current canonical snapshot and avoids a hydration
+request. Without initial data, loading starts automatically after client mount. Server rendering
+does not start loads or subscriptions. Call `refresh()` for an explicit reload and
+`invalidate(meta)` when an external event makes the current snapshot stale.
+
+Subscriptions stay transport-neutral:
+
+```tsx
+type Items = Awaited<ReturnType<typeof loadItems>>;
+type LiveInvalidation = { cursor: string };
+
+const items = query.create<string, Items, LiveInvalidation>({
+  source: () => requestUrl(),
+  load: loadItems,
+  subscribe: ({ invalidate }) =>
+    messages.subscribe((message) => {
+      void invalidate({ cursor: message.cursor })
+        .then(() => messages.markApplied(message.cursor))
+        .catch(() => {
+          // The adapter owns replay and retry policy.
+        });
+    }),
+});
+```
+
+For pagination, `query.createInfinite` keeps Page objects intact. Render flattened items in the
+consumer and trigger `loadMore()` from the UI; the query does not install an intersection
+observer.
+
+`refresh()` and `loadMore()` resolve after their attempt settles and expose failures through
+`error()`. `invalidate()` is different: it rejects unless a covering snapshot commits, so an
+adapter can acknowledge an event cursor only after successful coverage.
+
+## 10. Common Gotchas
 
 A summary of the most frequent pitfalls across all modules.
 
 ```
 mutation.retry()     Does NOT re-run onBefore. Uses previous context.
                      Use mutate(sameArgs) if you need onBefore again.
+
+query                Owner-local only; no global cache or cross-owner deduplication.
+                     Matching initial data skips the first request.
+                     Loads and subscriptions start after client mount.
 
 hotkeys              Uses navigator.userAgentData (modern) with
                      navigator.userAgent fallback for Mac detection.
