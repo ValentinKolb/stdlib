@@ -210,6 +210,56 @@ describe("mutation.create", () => {
     expect(m.data()!()).toBe("hello");
     dispose();
   });
+
+  it("works without a reactive owner", async () => {
+    const m = mutation.create({ mutation: async () => 42 });
+
+    await m.mutate(undefined as any);
+
+    expect(m.data()).toBe(42);
+  });
+
+  it("retries a mutation invoked with undefined variables", async () => {
+    let callCount = 0;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create<number, undefined>({
+        mutation: async () => {
+          callCount++;
+          if (callCount === 1) throw new Error("first fail");
+          return 42;
+        },
+      }),
+    );
+
+    await m.mutate(undefined);
+    await m.retry();
+
+    expect(callCount).toBe(2);
+    expect(m.data()).toBe(42);
+    expect(m.error()).toBeNull();
+    dispose();
+  });
+
+  it("does not reuse context from an earlier invocation on retry", async () => {
+    const contexts: Array<string | undefined> = [];
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        onBefore: (withContext: boolean) =>
+          withContext ? { label: "first" } : undefined,
+        mutation: async (_vars, ctx) => {
+          contexts.push(ctx.label);
+          return contexts.length;
+        },
+      }),
+    );
+
+    await m.mutate(true);
+    await m.mutate(false);
+    await m.retry();
+
+    expect(contexts).toEqual(["first", undefined, undefined]);
+    dispose();
+  });
 });
 
 // ==========================
@@ -217,6 +267,64 @@ describe("mutation.create", () => {
 // ==========================
 
 describe("mutation regression", () => {
+  it("keeps loading while the latest mutation is still running", async () => {
+    const resolvers = new Map<string, () => void>();
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: (value: string) =>
+          new Promise<string>((resolve) => {
+            resolvers.set(value, () => resolve(value));
+          }),
+      }),
+    );
+
+    const older = m.mutate("older");
+    const latest = m.mutate("latest");
+    resolvers.get("older")?.();
+    await older;
+
+    expect(m.loading()).toBe(true);
+    expect(m.data()).toBeNull();
+
+    resolvers.get("latest")?.();
+    await latest;
+
+    expect(m.loading()).toBe(false);
+    expect(m.data()).toBe("latest");
+    dispose();
+  });
+
+  it("keeps a mutation started from onFinally active", async () => {
+    let resolveLatest: (() => void) | undefined;
+    let latest: Promise<void> | undefined;
+    let startLatest = true;
+    const { result: m, dispose } = testRoot(() =>
+      mutation.create({
+        mutation: (value: string) =>
+          value === "first"
+            ? Promise.resolve(value)
+            : new Promise<string>((resolve) => {
+                resolveLatest = () => resolve(value);
+              }),
+        onFinally: () => {
+          if (!startLatest) return;
+          startLatest = false;
+          latest = m.mutate("latest");
+        },
+      }),
+    );
+
+    await m.mutate("first");
+    expect(m.loading()).toBe(true);
+
+    resolveLatest?.();
+    await latest;
+
+    expect(m.loading()).toBe(false);
+    expect(m.data()).toBe("latest");
+    dispose();
+  });
+
   it("does not overwrite newer result with stale older one", async () => {
     const { result: m, dispose } = testRoot(() =>
       mutation.create({

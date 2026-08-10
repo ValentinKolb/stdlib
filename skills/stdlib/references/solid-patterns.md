@@ -4,9 +4,9 @@ Comprehensive patterns for all solid modules in stdlib.
 
 ## 1. Reactive Lifecycle
 
-All `create*` functions must be called inside a reactive owner (component body or `createRoot`).
-Signals auto-cleanup via `onCleanup` -- no manual teardown needed. Signals are lazy and only
-compute when read.
+Functions that register lifecycle cleanup must be called inside a reactive owner (component body
+or `createRoot`). Signals themselves do not require an owner. Where cleanup is registered, it runs
+automatically via `onCleanup`.
 
 ```tsx
 import { createRoot } from "solid-js";
@@ -20,16 +20,18 @@ function MyComponent() {
   return <div>...</div>;
 }
 
-// Outside a component -- wrap in createRoot for cleanup
+// mutation.create registers no lifecycle cleanup and also works outside a component
+const standaloneMutation = mutation.create({ mutation: fetchData });
+
+// Lifecycle-bound primitives still need an owner
 createRoot((dispose) => {
-  const { mutate } = mutation.create({ mutation: fetchData });
-  // ...
-  dispose(); // manual cleanup
+  const { debouncedFn } = timed.debounce(save, 500);
+  dispose();
 });
 ```
 
-Gotcha: calling `mutation.create()` or `timed.debounce()` outside a reactive owner will throw
-because `onCleanup` has no owner to attach to.
+Gotcha: lifecycle-bound primitives such as `timed.debounce()` need an owner for `onCleanup`.
+`mutation.create()` is owner-independent.
 
 ## 2. Mutation Pattern (React Query-like)
 

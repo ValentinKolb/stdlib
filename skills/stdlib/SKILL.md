@@ -39,7 +39,7 @@ file as the router and load detailed references only when the task needs them.
 | `@k2b/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, text, result, cache |
 | `@k2b/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
 | `@k2b/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
-| `@k2b/stdlib/solid` | SolidJS reactive owner required | Mutations, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
+| `@k2b/stdlib/solid` | SolidJS; reactive owner where noted | Mutations, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
 
 ## Reference Routing
 

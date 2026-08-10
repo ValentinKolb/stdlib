@@ -17,6 +17,7 @@ import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clic
 ## mutation
 
 Async mutation controller with reactive loading/error/data signals, abort, and retry. Follows a pattern similar to React Query's `useMutation`.
+Unlike lifecycle-bound Solid primitives, `mutation.create()` does not require a reactive owner.
 
 ### API
 
@@ -87,6 +88,7 @@ return (
 ```
 
 **Gotchas:**
+- **Reactive owner**: `mutation.create()` can be used outside a component or `createRoot`; it registers no owner-bound cleanup.
 - **Concurrent mutations**: when `mutate()` is called while a previous mutation is in-flight, the older mutation's result is silently dropped on resolution — the newer mutation is always the source of truth. Previously a slow-resolving older call could overwrite a fresh `data` signal.
 - **Abort routing**: when the mutation function throws an `AbortError` (e.g. `fetch` aborted via the `abortSignal`), `onAbort` fires — not `onError`. Same when `abort()` is called explicitly. `onError` is reserved for genuine failures.
 

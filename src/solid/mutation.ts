@@ -103,8 +103,7 @@ type MutationOptions<T, V, C = unknown> = {
  * execution and does NOT call `onBefore` again -- use this for one-time side effects
  * that should not be repeated on retries.
  *
- * @assumption Must be called inside a SolidJS component (or reactive owner) so that
- *   signals are properly tracked and `onCleanup` handlers can be registered if needed.
+ * Does not require a SolidJS reactive owner because it registers no owner-bound cleanup.
  *
  * Side effects:
  * - Creates SolidJS signals for `data`, `error`, and `loading`.
@@ -147,12 +146,8 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
   // Store the current AbortController so we can cancel the mutation.
   let currentAbortController: AbortController | null = null;
 
-  // Optionally store the current combined context (base context merged with the abort signal).
-  let currentCtx: (C & { abortSignal: AbortSignal }) | undefined;
-
-  // Store the last mutation variables and base context to allow retrying without re‑executing onBefore.
-  let lastVars: V | undefined;
-  let lastBaseCtx: C | undefined;
+  // Store the last runnable invocation so retry also works when vars are undefined.
+  let lastInvocation: { vars: V; baseCtx: C | undefined } | undefined;
 
   /**
    * Helper to update the data signal safely.
@@ -177,11 +172,7 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
    * @param baseCtx - An optional base context. If provided, the onBefore hook is NOT re‑executed.
    */
   const runMutation = async (vars: V, baseCtx?: C): Promise<void> => {
-    // Store the latest variables and base context (may be undefined).
-    lastVars = vars;
-    if (baseCtx !== undefined) {
-      lastBaseCtx = baseCtx;
-    }
+    lastInvocation = { vars, baseCtx };
     setLoading(true);
     setError(null);
 
@@ -195,9 +186,6 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
       ...(baseCtx && typeof baseCtx === "object" ? baseCtx : {}),
       abortSignal: abortController.signal,
     } as C & { abortSignal: AbortSignal };
-    // Store the combined context for potential abort callbacks.
-    currentCtx = combinedCtx;
-
     try {
       const result = await options.mutation(vars, combinedCtx);
 
@@ -233,15 +221,14 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
         }
       }
     } finally {
-      setLoading(false);
+      const isCurrentMutation = currentAbortController === abortController;
+      if (isCurrentMutation) {
+        setLoading(false);
+        currentAbortController = null;
+      }
       if (options.onFinally) {
         options.onFinally(combinedCtx);
       }
-      // Only clear if we're still the active mutation
-      if (currentAbortController === abortController) {
-        currentAbortController = null;
-      }
-      currentCtx = undefined;
     }
   };
 
@@ -256,7 +243,6 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
     try {
       if (options.onBefore) {
         baseCtx = await options.onBefore(vars);
-        lastBaseCtx = baseCtx;
       }
     } catch (err: unknown) {
       const error = normalizeError(err);
@@ -284,8 +270,8 @@ const create = <T, V, C = unknown>(options: MutationOptions<T, V, C>): MutationR
    * **Note:** The onBefore hook is NOT re‑executed on retry, so any one‑time side effects will not occur again.
    */
   const retry = async (): Promise<void> => {
-    if (lastVars !== undefined) {
-      await runMutation(lastVars, lastBaseCtx);
+    if (lastInvocation) {
+      await runMutation(lastInvocation.vars, lastInvocation.baseCtx);
     }
   };
 

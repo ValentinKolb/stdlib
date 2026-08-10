@@ -4,11 +4,13 @@
 import { mutation, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y } from "@k2b/stdlib/solid";
 ```
 
-All exports require SolidJS and must be called inside a reactive owner (component or `createRoot`).
+All exports require SolidJS. Primitives that register lifecycle cleanup must be called inside a
+reactive owner (component or `createRoot`); owner-independent APIs are noted explicitly.
 
 ## mutation
 
 Async mutation controller with reactive signals, lifecycle hooks, abort, and retry.
+It does not require a reactive owner.
 
 ```tsx
 import { mutation } from "@k2b/stdlib/solid";
