@@ -617,8 +617,7 @@ const data = localStore.read<PadData>("pad:abc");
 
 ## clipboard
 
-Reactive copy-to-clipboard with a timeout-based `wasCopied` feedback signal.
-Wraps `clipboard.copy()` from `@k2b/stdlib/browser` with a reactive signal that auto-resets.
+Reactive copy feedback for text and consumer-provided asynchronous clipboard writers.
 
 ### API
 
@@ -627,9 +626,22 @@ clipboard.create(timeout?: number): {
   copy: (text: string) => Promise<void>;
   wasCopied: Accessor<boolean>;
 }
+
+clipboard.createWriter<T>({
+  write: (value: T) => Promise<void>,
+  copiedFor?: number,
+}): {
+  copy: (value: T) => Promise<boolean>;
+  wasCopied: Accessor<boolean>;
+  error: Accessor<Error | null>;
+}
 ```
 
-Default timeout is 2000ms. Must be called inside a SolidJS reactive owner (registers `onCleanup` for the timer). Errors from the Clipboard API are caught and logged, not thrown.
+Both helpers default to 2000ms and must be called inside a SolidJS reactive owner.
+`create()` keeps its text-only `Promise<void>` API and logs Clipboard API failures.
+`createWriter()` returns whether the write succeeded, clears an earlier error when a new
+attempt starts, and only lets the latest concurrent invocation update state. Its feedback
+timer restarts after every latest successful write and is cleared with the owner.
 
 ### Example
 
@@ -641,6 +653,15 @@ return (
     {wasCopied() ? "Copied!" : "Copy"}
   </button>
 );
+
+const resourceCopy = clipboard.createWriter({
+  write: writeCustomClipboardContent,
+  copiedFor: 1800,
+});
+
+const success = await resourceCopy.copy(value);
+resourceCopy.wasCopied();
+resourceCopy.error();
 ```
 
 ---

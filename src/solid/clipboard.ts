@@ -1,4 +1,4 @@
-import { createSignal, onCleanup } from "solid-js";
+import { createSignal, onCleanup, type Accessor } from "solid-js";
 
 // ==========================
 // Reactive Clipboard
@@ -46,6 +46,82 @@ const create = (timeout: number = 2000) => {
   return { copy, wasCopied };
 };
 
+export type ClipboardWriterOptions<T> = {
+  /** Writes the value to the system clipboard. */
+  write: (value: T) => Promise<void>;
+  /** Time in ms after which successful copy feedback resets (default: 2000). */
+  copiedFor?: number;
+};
+
+export type ClipboardWriter<T> = {
+  /** Writes a value and reports whether that write succeeded. */
+  copy: (value: T) => Promise<boolean>;
+  /** Whether the latest write succeeded and is still inside its feedback window. */
+  wasCopied: Accessor<boolean>;
+  /** Error from the latest write attempt, or null. */
+  error: Accessor<Error | null>;
+};
+
+const normalizeError = (value: unknown): Error =>
+  value instanceof Error ? value : new Error(String(value));
+
+/**
+ * Creates reactive copy feedback for a custom asynchronous clipboard writer.
+ *
+ * Only the latest invocation may update state. Starting a new invocation clears
+ * previous feedback, and all pending reset timers are bound to the Solid owner.
+ */
+const createWriter = <T>(options: ClipboardWriterOptions<T>): ClipboardWriter<T> => {
+  const [wasCopied, setWasCopied] = createSignal(false);
+  const [error, setError] = createSignal<Error | null>(null);
+  const copiedFor = options.copiedFor ?? 2000;
+  let timerId: ReturnType<typeof setTimeout> | null = null;
+  let latestInvocation = 0;
+  let disposed = false;
+
+  const clearResetTimer = () => {
+    if (timerId !== null) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  };
+
+  const copy = async (value: T): Promise<boolean> => {
+    const invocation = ++latestInvocation;
+    clearResetTimer();
+    setWasCopied(false);
+    setError(null);
+
+    try {
+      await options.write(value);
+
+      if (!disposed && invocation === latestInvocation) {
+        setWasCopied(true);
+        timerId = setTimeout(() => {
+          if (!disposed && invocation === latestInvocation) setWasCopied(false);
+          timerId = null;
+        }, copiedFor);
+      }
+
+      return true;
+    } catch (cause) {
+      if (!disposed && invocation === latestInvocation) {
+        setError(normalizeError(cause));
+      }
+      return false;
+    }
+  };
+
+  onCleanup(() => {
+    disposed = true;
+    latestInvocation++;
+    clearResetTimer();
+  });
+
+  return { copy, wasCopied, error };
+};
+
 export const clipboard = {
   create,
+  createWriter,
 } as const;

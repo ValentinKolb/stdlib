@@ -244,8 +244,7 @@ localStore.read("user");    // T | null
 
 ## clipboard
 
-Reactive clipboard hook with auto-resetting copy-feedback signal.
-Wraps `clipboard.copy()` from `@k2b/stdlib/browser` with a `wasCopied` signal that resets after a timeout.
+Reactive clipboard helpers with auto-resetting copy-feedback state.
 
 ```tsx
 import { clipboard } from "@k2b/stdlib/solid";
@@ -258,6 +257,25 @@ const { copy, wasCopied } = clipboard.create(2000);
 ```
 
 `wasCopied()` resets to `false` after the timeout (default 2000ms).
+`clipboard.create(timeout?)` keeps the existing text-only API and catches Clipboard API errors.
+
+Use `clipboard.createWriter()` when the consumer needs to write another value shape or
+specialized clipboard content:
+
+```tsx
+const resourceCopy = clipboard.createWriter({
+  write: writeCustomClipboardContent,
+  copiedFor: 1800,
+});
+
+const success = await resourceCopy.copy(value);
+resourceCopy.wasCopied(); // true only after the latest successful write
+resourceCopy.error();     // Error from the latest write, or null
+```
+
+`copy()` returns `true` on success and `false` on failure. A new attempt clears old
+feedback and errors immediately. Only the latest concurrent attempt may update reactive
+state, and the Solid owner clears pending reset timers on disposal.
 
 ## clickOutside
 
