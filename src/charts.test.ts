@@ -836,6 +836,29 @@ describe("smoothPathD", () => {
     // n-1 segments → n-1 C commands.
     expect(d.match(/ C /g)?.length).toBe(2);
   });
+
+  it("never bends backward in x when point spacing is uneven", () => {
+    const d = smoothPathD([
+      { x: 0, y: 4 },
+      { x: 250, y: 10 },
+      { x: 267, y: 1 },
+      { x: 268, y: 8 },
+    ]);
+    const segments = [...d.matchAll(/ C (\S+) \S+ (\S+) \S+ (\S+) \S+/g)];
+    let startX = 0;
+
+    expect(segments).toHaveLength(3);
+    for (const segment of segments) {
+      const [, cp1Raw, cp2Raw, endRaw] = segment;
+      const cp1 = Number(cp1Raw);
+      const cp2 = Number(cp2Raw);
+      const end = Number(endRaw);
+      expect(cp1).toBeGreaterThanOrEqual(startX);
+      expect(cp2).toBeGreaterThanOrEqual(cp1);
+      expect(end).toBeGreaterThanOrEqual(cp2);
+      startX = end;
+    }
+  });
 });
 
 // =====================================================================

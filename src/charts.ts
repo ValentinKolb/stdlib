@@ -914,14 +914,14 @@ export const linePathD = (points: ReadonlyArray<{ x: number; y: number }>): stri
 };
 
 /**
- * Format an SVG path `d` for a smooth curve through `points` using
- * Catmull-Rom interpolation converted to cubic Bezier segments.
+ * Format an SVG path `d` for a smooth curve through `points` using cubic
+ * Bezier segments with Catmull-Rom-derived vertical control points.
  *
- * For each segment from `points[i]` to `points[i+1]`, control points are
- * derived from neighboring `points[i-1]` and `points[i+2]` (reflecting the
- * end points at boundaries). Tension is fixed at the standard Catmull-Rom
- * value (factor 1/6) which produces pleasant curves for typical UI data
- * without overshoots.
+ * Vertical control points use neighboring `points[i-1]` and `points[i+2]`
+ * (reflecting the end points at boundaries) with the standard Catmull-Rom
+ * tension factor of 1/6. Horizontal control points stay at the segment's
+ * thirds, so x progresses linearly and never doubles back when point spacing
+ * is uneven.
  */
 export const smoothPathD = (points: ReadonlyArray<{ x: number; y: number }>): string => {
   const n = points.length;
@@ -935,9 +935,10 @@ export const smoothPathD = (points: ReadonlyArray<{ x: number; y: number }>): st
     const p1 = points[i]!;
     const p2 = points[i + 1]!;
     const p3 = i + 2 < n ? points[i + 2]! : points[i + 1]!;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const dx = p2.x - p1.x;
+    const cp1x = p1.x + dx / 3;
     const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2x = p2.x - dx / 3;
     const cp2y = p2.y - (p3.y - p1.y) / 6;
     d += ` C ${fmt(cp1x)} ${fmt(cp1y)} ${fmt(cp2x)} ${fmt(cp2y)} ${fmt(p2.x)} ${fmt(p2.y)}`;
   }
