@@ -106,10 +106,10 @@ Formatting a raw measured millisecond count?
                     Yes -> Feed/chat?
                              Yes -> dates.formatDateTimeRelative() // "4 mins ago"
                              No  -> Sidebar/list?
-                                      Yes -> dates.formatDateRelative() // "Yesterday"
+                                      Yes -> dates.formatDateRelative() // "yesterday"
                                       No  -> dates.formatTimeSpan() // "in 3 days"
                     No  -> Duration between two dates?
-                             Yes -> dates.formatDuration() // "2 hours 15 minutes"
+                             Yes -> dates.formatDuration() // "2 hours, 15 minutes"
                              No  -> dates.formatDate()     // "05 Mar 2025"
 ```
 
@@ -117,7 +117,8 @@ Formatting a raw measured millisecond count?
 import { dates, text } from "@k2b/stdlib";
 
 // Feed message timestamps
-dates.formatDateTimeRelative(msg.createdAt); // "just now" / "4 mins ago" / "Yesterday"
+dates.formatDateTimeRelative(msg.createdAt); // "now" / "4 minutes ago" / "yesterday"
+dates.formatDateTimeRelative(msg.createdAt, { locale: "de" }); // "vor 4 Minuten" / "gestern"
 
 // Sidebar last-seen
 dates.formatDateRelative(user.lastSeen);     // "14:30" / "Mon" / "05 Mar 2025"
@@ -126,7 +127,10 @@ dates.formatDateRelative(user.lastSeen);     // "14:30" / "Mon" / "05 Mar 2025"
 dates.formatTimeSpan(task.deadline);         // "in 3 days" (uses Intl.RelativeTimeFormat)
 
 // Event duration
-dates.formatDuration(event.start, event.end); // "1 day 3 hours"
+dates.formatDuration(event.start, event.end); // "1 day, 3 hours"
+
+// Recurring events
+dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until }); // "Every Tue and Wed until 23 Dec 2024"
 
 // Request latency or timeout budget with no source timestamps
 text.pprintDurationMs(request.durationMs);     // "1.23s"
@@ -290,7 +294,7 @@ const size = text.pprintBytes(15728640);
 // "15 MiB"
 
 // SI mode (1000-base) when you want disk-vendor-style sizes
-const siSize = text.pprintBytes(15_000_000, "si");
+const siSize = text.pprintBytes(15_000_000, { mode: "si" });
 // "15 MB"
 
 // Split for styled UI rendering
@@ -303,7 +307,7 @@ text.pprintPercent(0.999, { decimals: 3 });      // "99.900%"
 text.pprintDurationMs(90_000);                   // "1m 30s"
 ```
 
-`slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". Numeric pretty-printers localize separators while keeping compact and duration suffixes deterministic. `pprintPercent` always accepts a ratio. `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B); pass `"si"` for decimal units (1 KB = 1000 B).
+`slugify` applies NFKD normalization and strips diacritics, so "Uber uns" becomes "uber-uns". Numeric pretty-printers localize separators while keeping compact and duration suffixes deterministic. `pprintPercent` always accepts a ratio. `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B); pass `{ mode: "si" }` for decimal units (1 KB = 1000 B). All pprint helpers and the relative/duration date formatters take a `locale`; resolve it once via an `i18n` catalog and pass it through.
 
 ---
 

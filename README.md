@@ -25,7 +25,7 @@ bun add solid-js lean-qr
 
 | Import | Environment | What's inside |
 |---|---|---|
-| `@k2b/stdlib` | Universal | encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
+| `@k2b/stdlib` | Universal | encoding, crypto, password, dates, i18n, text, fuzzy, highlight, charts, cache, result, svg, timing, streaming, search-params, file-icons, gradients |
 | `@k2b/stdlib/qr` | Universal (requires `lean-qr`) | qr -- WiFi/email/tel/vCard/event payload generators and SVG rendering |
 | `@k2b/stdlib/browser` | Browser-only | files (OPFS, ZIP), images (canvas pipeline), cookies, clipboard, notifications, **kvStore** (OPFS-backed key-value, cross-tab `watch` subscriptions), theme |
 | `@k2b/stdlib/solid` | SolidJS | mutation, query, timed, hotkeys, dnd, detail-panel, localstorage, clipboard, click-outside, dropzone, a11y |
@@ -61,7 +61,27 @@ text.pprintNumber(1_234_567);                       // locale-aware grouping
 text.pprintNumber(1_234_567, { compact: true });    // "1.2M" in an English locale
 text.pprintPercent(0.999, { decimals: 3 });         // "99.900%"
 text.pprintDurationMs(90_000);                      // "1m 30s"
+text.pprintCurrency(1234.5, "EUR", { locale: "de" }); // "1.234,50 €"
 text.pprintDurationMs(null, { fallback: "n/a" });   // "n/a"
+```
+
+### Translate Messages
+
+```typescript
+import { i18n, dates } from "@k2b/stdlib";
+
+const catalog = i18n.define({
+  baseLocale: "en",
+  messages: {
+    en: { greeting: ({ name }: { name: string }) => `Hello ${name}` },
+    de: { greeting: ({ name }) => `Hallo ${name}` },
+  },
+});
+
+// BCP-47 fallback: "de-AT" -> "de" -> "en"; no global state, SSR-safe
+const { locale, t } = catalog.resolve(i18n.parseAcceptLanguage(header));
+t.greeting({ name: "Ada" });          // "Hallo Ada"
+dates.formatDate(date, { locale });   // same locale drives Intl-based formatting
 ```
 
 ### Generate IDs and Keys
@@ -262,7 +282,7 @@ hotkeys.create({
 ## Documentation
 
 ```
-docs/core.md      -- encoding, crypto, password, dates, text, fuzzy, highlight, charts, cache, result, svg, streaming, ...
+docs/core.md      -- encoding, crypto, password, dates, i18n, text, fuzzy, highlight, charts, cache, result, svg, streaming, ...
 docs/browser.md   -- files, images, cookies, clipboard, notifications, kv-store, theme
 docs/solid.md     -- mutation, query, hotkeys, dnd, timed, localstorage, ...
 

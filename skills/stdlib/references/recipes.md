@@ -306,3 +306,55 @@ async function streamChat(prompt: string, onChunk: (text: string) => void) {
   return result.ok();
 }
 ```
+
+## 10. Localized SSR Page
+
+**Modules:** `i18n` + `dates` + `text` + `result`
+
+```ts
+import { i18n, dates, text, type RecurrenceParts } from "@k2b/stdlib";
+
+// Module scope: one shared catalog, no global locale state (SSR-safe)
+const catalog = i18n.define({
+  baseLocale: "en",
+  messages: {
+    en: {
+      greeting: ({ name }: { name: string }) => `Hello ${name}`,
+      items: ({ count }: { count: number }) =>
+        i18n.plural(count, "en", { one: `${count} item`, other: `${count} items` }),
+      recurrence: (p: RecurrenceParts) =>
+        `Every ${p.weekdays ?? p.every}${p.until ? ` until ${p.until}` : ""}`,
+      NOT_FOUND: "Not found",
+    },
+    de: {
+      greeting: ({ name }) => `Hallo ${name}`,
+      items: ({ count }) =>
+        i18n.plural(count, "de", { one: `${count} Eintrag`, other: `${count} Einträge` }),
+      recurrence: (p) => `Jeden ${p.weekdays ?? p.every}${p.until ? ` bis ${p.until}` : ""}`,
+      NOT_FOUND: "Nicht gefunden",
+    },
+  },
+});
+
+// Per request: resolve once, thread locale through all formatting
+export const handle = (req: Request) => {
+  const { locale, t } = catalog.resolve(
+    i18n.parseAcceptLanguage(req.headers.get("accept-language")),
+  );
+
+  const rule = { freq: "weekly", byWeekday: [2, 3], until: series.until } as const;
+  return render({
+    greeting: t.greeting({ name: user.name }),
+    schedule: t.recurrence(dates.formatRecurrenceParts(rule, { locale })),
+    lastSeen: dates.formatTimeSpan(user.lastSeen, { locale }),
+    storage: text.pprintBytes(user.storageBytes, { locale }),
+    price: text.pprintCurrency(plan.price, "EUR", { locale }),
+    // Service errors: translate the code at the UI edge, message stays dev-facing
+    error: response.ok ? null : t[response.error.code],
+  });
+};
+```
+
+Catalog completeness belongs in a test: `expect(catalog.check()).toEqual([])`.
+Chart axes stay locale-neutral by default; pass
+`format: (v) => text.pprintNumber(v, { locale })` for localized ticks.

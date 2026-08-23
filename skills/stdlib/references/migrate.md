@@ -319,4 +319,54 @@ allocation. Now clamped at 1024.
 
 ---
 
+## v0.20 → next (i18n slice, breaking)
+
+### 1. `text.pprintBytes` / `pprintBytesParts` take an options object
+
+**What changed:** The positional mode argument was replaced by
+`{ mode?, locale? }`; the numeric part can now be localized explicitly.
+
+```ts
+// Before
+text.pprintBytes(1500, "si");
+// After
+text.pprintBytes(1500, { mode: "si" });
+text.pprintBytes(1536, { locale: "de" }); // "1,5 KiB"
+```
+
+### 2. `dates` formatters take context objects only
+
+**What changed:** `formatMonthYear`, `formatWeekdayShort`, `formatWeekdayLong`,
+`formatFullDate`, `weekdays`, and `months` no longer accept a bare locale
+string; `formatTimeSpan` no longer accepts a positional base argument.
+
+```ts
+// Before
+dates.formatMonthYear(d, "de");
+dates.formatTimeSpan(d, base);
+// After
+dates.formatMonthYear(d, { locale: "de" });
+dates.formatTimeSpan(d, { base, locale: "de" });
+```
+
+### 3. Relative and duration output is now Intl-generated
+
+**What changed:** `formatDateTimeRelative`, `formatDateRelative`, and
+`formatDuration` render via `Intl.RelativeTimeFormat` / `Intl.NumberFormat`
+(unit style) in the context locale (default `"en"`), instead of hardcoded
+English.
+
+**What to change:** Update exact-string assertions:
+`"just now"` → `"now"`, `"4 mins ago"` → `"4 minutes ago"`,
+`"Yesterday"` → `"yesterday"`, `"2 hours 30 minutes"` →
+`"2 hours, 30 minutes"`, `"less than a minute"` → `"< 1 minute"`.
+`formatDuration` additionally accepts a `DateContext`.
+
+### 4. New APIs (non-breaking)
+
+- `i18n` module: `define`/`resolve` message catalogs, `parseAcceptLanguage`,
+  `plural`, `formatList`, `compare`.
+- `dates.formatRecurrence` / `dates.formatRecurrenceParts`.
+- `text.pprintCurrency`.
+
 <!-- Future version sections append here -->

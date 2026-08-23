@@ -292,8 +292,10 @@ dates.formatDate(input: string | Date, ctx?: DateContext): string              /
 dates.formatDateTime(input: string | Date, ctx?: DateContext): string          // "05 Mar 2025, 13:53"
 dates.formatDateTimeRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
 dates.formatDateRelative(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
-dates.formatTimeSpan(input: string | Date, baseOrCtx?: string | Date | DateContext, ctx?: DateContext): string
-dates.formatDuration(from: string | Date, to: string | Date): string      // "2 hours 15 minutes", "1 day 3 hours"
+dates.formatTimeSpan(input: string | Date, ctx?: DateContext & { base?: string | Date }): string
+dates.formatDuration(from: string | Date, to: string | Date, ctx?: DateContext): string  // "2 hours, 15 minutes"
+dates.formatRecurrence(rule: RecurrenceRule, ctx?: DateContext): string        // "Every Tue and Wed until 23 Dec 2024"
+dates.formatRecurrenceParts(rule: RecurrenceRule, ctx?: DateContext): RecurrenceParts
 ```
 
 ### Examples
@@ -304,9 +306,14 @@ import { dates } from "@k2b/stdlib";
 dates.formatDate("2025-03-05T13:53:00Z");          // "05 Mar 2025"
 dates.formatDateTime("2025-03-05T13:53:00Z");       // "05 Mar 2025, 13:53"
 dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" }); // "06 Mar 2025, 00:30"
-dates.formatDateTimeRelative(new Date());            // "just now"
+dates.formatDateTimeRelative(new Date());            // "now" (Intl.RelativeTimeFormat, ctx.locale, default "en")
 dates.formatDateRelative(new Date());                // "14:30" (UTC default)
-dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day 3 hours"
+dates.formatDuration("2025-01-01", "2025-01-02T03:30:00Z"); // "1 day, 3 hours"
+dates.formatDuration(a, b, { locale: "de" });        // "2 Stunden, 30 Minuten" (Intl unit style)
+dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until });  // "Every Tue and Wed until 23 Dec 2024"
+dates.formatRecurrenceParts({ freq: "weekly", byWeekday: [2, 3] }, { locale: "de" });
+// { every: "Woche", weekdays: "Di und Mi" } -- compose localized sentences via an i18n catalog;
+// formatRecurrence itself uses an English sentence skeleton ("Every ... until ...").
 
 // Cloud apps: store UTC instants, edit in the app timezone
 const timeZone = dates.normalizeTimeZone(app.timeZone, "UTC");
@@ -338,11 +345,11 @@ const nextStartsAt = dates.addZonedInstant(event.startsAt, {
 ```
 
 ### Relative time buckets (formatDateTimeRelative)
-- < 5s: "just now"
+- < 5s: "now"
 - < 1min: "12 secs ago"
 - < 1h: "4 mins ago"
 - < 24h: "2 hours ago"
-- < 48h: "Yesterday"
+- < 48h: "yesterday" (localized via Intl.RelativeTimeFormat)
 - < 7d: weekday name ("Mon")
 - >= 7d or future: falls back to formatDate
 
@@ -379,11 +386,11 @@ dates.isSameMonth(date: Date, refDate: Date, ctx?: DateContext): boolean
 dates.isSameDay(a: Date, b: Date, ctx?: DateContext): boolean
 
 // Locale/timezone-aware formatting
-dates.formatMonthYear(date: Date, localeOrCtx?: string | DateContext): string  // "March 2025"
+dates.formatMonthYear(date: Date, ctx?: DateContext): string  // "March 2025"
 dates.formatDayNumber(date: Date, ctx?: DateContext): string                   // "9"
-dates.formatWeekdayShort(date: Date, localeOrCtx?: string | DateContext): string
-dates.formatWeekdayLong(date: Date, localeOrCtx?: string | DateContext): string
-dates.formatFullDate(date: Date, localeOrCtx?: string | DateContext): string
+dates.formatWeekdayShort(date: Date, ctx?: DateContext): string
+dates.formatWeekdayLong(date: Date, ctx?: DateContext): string
+dates.formatFullDate(date: Date, ctx?: DateContext): string
 dates.formatDateShort(date: Date, ctx?: DateContext): string
 dates.formatDateKey(input: string | Date, ctx?: DateContext): string           // "2025-03-09"
 dates.formatTime(input: string | Date, ctx?: DateContext): string              // "14:30"
@@ -401,8 +408,8 @@ dates.addZoned(input: string, options: { timeZone: string; days?: number; weeks?
 dates.addZonedInstant(input: string | Date, options: { timeZone: string; days?: number; weeks?: number; months?: number; years?: number }): string
 
 // Dynamic locale-aware constants
-dates.weekdays(localeOrCtx?: string | DateContext): string[]  // ["Mon","Tue",...]
-dates.months(localeOrCtx?: string | DateContext): string[]    // ["January",...]
+dates.weekdays(ctx?: DateContext): string[]  // ["Mon","Tue",...]
+dates.months(ctx?: DateContext): string[]    // ["January",...]
 dates.getYearOptions(ctx?: DateContext): number[]             // current year +/- 5
 
 // URL helpers
@@ -427,8 +434,8 @@ const items = dates.getDayItems(allItems, new Date(), { timeZone: "Europe/Berlin
 const nextMonth = dates.addMonths(new Date(), 1, { timeZone: "Europe/Berlin" });
 
 // Locale-aware
-dates.formatMonthYear(new Date(), "de");  // "März 2025"
-dates.weekdays("fr");                      // ["lun.", "mar.", ...]
+dates.formatMonthYear(new Date(), { locale: "de" });  // "März 2025"
+dates.weekdays({ locale: "fr" });                     // ["lun.", "mar.", ...]
 dates.formatDateKey(new Date("2025-03-05T02:30:00Z"), { timeZone: "America/New_York" }); // "2025-03-04"
 
 // Cloud timezone helpers
@@ -574,6 +581,55 @@ for await (const entry of streaming.parseNDJSON<{ level: string; msg: string }>(
 
 ---
 
+## i18n
+
+Type-safe message catalogs with BCP-47 fallback resolution, plus thin Intl
+wrappers. Dependency-free, SSR-safe, no global state; the stdlib ships no
+translations (Intl/CLDR provides all locale data).
+
+```typescript
+i18n.define(config: { baseLocale: B; messages: { [locale: string]: MessageRecord } }): Catalog
+// MessageRecord values: string | ((params: P) => string)
+// Base locale defines keys + param types; other locales are compile-time-checked
+// subsets with params contextually typed from the base locale.
+
+catalog.resolve(requested?: readonly string[]): { locale: string; t: BaseMessages }
+// Fallback per requested tag: exact -> strip subtags ("de-AT" -> "de") -> next tag -> baseLocale.
+// Case-insensitive matching. t merges the resolved locale over the base (per-key fallback).
+catalog.check(): { locale: string; missing: string[]; extra: string[] }[]  // assert [] in a test
+catalog.locales: string[]   // base first
+catalog.baseLocale: string
+
+i18n.parseAcceptLanguage(header: string | null | undefined): string[]
+// Sorted by q desc (missing q = 1, stable ties), drops q<=0 and "*".
+
+i18n.plural(count: number, locale: string | undefined, forms: { zero?; one?; two?; few?; many?; other }): string
+i18n.formatList(items: readonly string[], locale?: string, opts?: { type?: "conjunction" | "disjunction" | "unit"; style?: "long" | "short" | "narrow" }): string
+i18n.compare(locale?: string, opts?: Intl.CollatorOptions): (a: string, b: string) => number
+```
+
+```typescript
+const catalog = i18n.define({
+  baseLocale: "en",
+  messages: {
+    en: { title: "Inbox", greeting: ({ name }: { name: string }) => `Hello ${name}` },
+    de: { title: "Eingang", greeting: ({ name }) => `Hallo ${name}` },
+  },
+});
+const { locale, t } = catalog.resolve(i18n.parseAcceptLanguage(header)); // "de-AT" -> "de"
+t.greeting({ name: "Ada" });          // "Hallo Ada"
+t.title;                              // "Eingang"
+dates.formatDate(date, { locale });   // resolved locale feeds dates/text formatting
+
+i18n.plural(2, "de", { one: "Tag", other: "Tage" });   // "Tage"
+i18n.formatList(["Di", "Mi", "Fr"], "de");             // "Di, Mi und Fr"
+["Öl", "Apfel"].sort(i18n.compare("de"));              // ["Apfel", "Öl"]
+```
+
+Notes:
+- Catalogs own only app messages; UI-facing `ServiceError`s should be localized by mapping `error.code` through a catalog at the UI edge (`message` stays dev-facing).
+- `resolve` is cheap (precomputed translators); call it per request/render, never store the result globally.
+
 ## text
 
 String manipulation utilities.
@@ -609,10 +665,11 @@ text.pprintDurationMs(
   options?: PprintDurationMsOptions,
 ): string
 
-text.pprintBytes(bytes: number, mode?: "iec" | "si"): string
-// 1536 => "1.5 KiB", (1500, "si") => "1.5 KB". Default mode: "iec".
+text.pprintBytes(bytes: number, options?: { mode?: "iec" | "si"; locale?: string }): string
+// 1536 => "1.5 KiB", (1500, { mode: "si" }) => "1.5 KB". Default mode: "iec".
 
-text.pprintBytesParts(bytes: number, mode?: "iec" | "si"): { value: string; unit: string }
+text.pprintBytesParts(bytes: number, options?: { mode?: "iec" | "si"; locale?: string }): { value: string; unit: string }
+text.pprintCurrency(value: number | null | undefined, currency: string, options?: { decimals?: number; locale?: string; fallback?: string }): string
 // 1536 => { value: "1.5", unit: "KiB" } -- for styled UI rendering
 
 text.truncate(content: string, limit: number, mode?: "end" | "start" | "middle"): string
@@ -645,10 +702,13 @@ text.pprintDurationMs(90_000);                                     // "1m 30s"
 text.pprintDurationMs(null, { fallback: "n/a" });                  // "n/a"
 text.pprintBytes(0);               // "0 B"
 text.pprintBytes(1536);            // "1.5 KiB"   (default IEC, 1024-base)
-text.pprintBytes(1500, "si");      // "1.5 KB"    (SI, 1000-base)
+text.pprintBytes(1500, { mode: "si" });  // "1.5 KB"    (SI, 1000-base)
+text.pprintBytes(1536, { locale: "de" });// "1,5 KiB"
 text.pprintBytes(2 ** 50);         // "1 PiB"
 text.pprintBytes(NaN);             // "0 B"
 text.pprintBytesParts(1536);       // { value: "1.5", unit: "KiB" }
+text.pprintCurrency(1234.5, "EUR", { locale: "de" });     // "1.234,50 €"
+text.pprintCurrency(1234.5, "USD", { locale: "en-US" });  // "$1,234.50"
 
 text.truncate("Hello World", 8);           // "Hello..."
 text.truncate("Hello World", 8, "start");  // "...World"
@@ -667,8 +727,9 @@ text.pascalCase("hello_world");    // "HelloWorld"
 - `pprintPercent` always accepts a ratio: `0.19` renders as `19%`. It never accepts an already multiplied percentage scale. `clamp: true` constrains the ratio to `0..1`.
 - `pprintDurationMs` accepts a raw millisecond count and uses the `ms/s/m/h/d` ladder with at most two non-zero units for minute-or-longer values.
 - The new numeric pretty-printers return `"—"` for null, undefined, or non-finite values unless `fallback` is set. Negative durations are also invalid.
-- `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B). Pass `"si"` for decimal units (1 KB = 1000 B).
-- `pprintBytes` is locale-aware: decimal separator follows the runtime default via `Intl.NumberFormat` (e.g. `"1,5 KiB"` in DE, `"1.5 KiB"` in EN). Thousands grouping is disabled.
+- `pprintBytes` defaults to IEC binary units (1 KiB = 1024 B). Pass `{ mode: "si" }` for decimal units (1 KB = 1000 B).
+- `pprintBytes` is locale-aware: decimal separator follows `options.locale` (default runtime locale) via `Intl.NumberFormat` (e.g. `"1,5 KiB"` in DE, `"1.5 KiB"` in EN). Thousands grouping is disabled.
+- `pprintCurrency` takes an ISO 4217 code; symbol, placement, and default fraction digits follow the locale/currency. Same `"—"` fallback contract as the other pprint helpers.
 - `pprintBytes` and `pprintBytesParts` guard against Infinity, NaN, and non-positive values, returning `"0 B"` / `{ value: "0", unit: "B" }`.
 - `pprintBytesParts` is the right call when you want to style value and unit independently in a UI (e.g. large number, small unit label).
 - `truncate` counts the `"..."` marker towards the limit. If `limit` < 4, returns the raw truncation without a marker.

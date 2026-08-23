@@ -6,7 +6,9 @@ description: >
   @k2b/stdlib/qr, and whenever the user needs help choosing,
   using, documenting, testing, or updating stdlib utilities. Trigger broadly
   for encoding, hashing, encryption, UUIDs, ULIDs, readable IDs, TOTP,
-  passwords, dates, calendars, timing, streaming, Result errors, caching,
+  passwords, dates, calendars, recurring-event formatting, i18n message
+  catalogs, locale resolution, Accept-Language parsing, timing, streaming,
+  Result errors, caching,
   search params, text formatting, fuzzy matching, syntax highlighting,
   markdown/editor overlays, custom DSL highlighting, charts, dashboard SVGs,
   sparklines, QR codes, file icons, gradients, SVG avatars, browser file
@@ -36,7 +38,7 @@ file as the router and load detailed references only when the task needs them.
 
 | Import path | Runtime | Read when |
 |---|---|---|
-| `@k2b/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, text, result, cache |
+| `@k2b/stdlib` | Universal browser/server | Core utilities, charts, highlighting, QR payload helpers, crypto, dates, i18n, text, result, cache |
 | `@k2b/stdlib/qr` | Universal with optional `lean-qr` peer | QR payload generation or SVG rendering |
 | `@k2b/stdlib/browser` | Browser DOM APIs | Downloads, ZIP, file pickers, OPFS, image processing, cookies, clipboard, notifications, kvStore, theme |
 | `@k2b/stdlib/solid` | SolidJS; reactive owner where noted | Mutations, owner-local queries, timers, hotkeys, drag-and-drop, localStore, detailPanel, clipboard, clickOutside, dropzone, a11y |
@@ -47,7 +49,7 @@ Load exactly the files needed for the task:
 
 | Need | Reference |
 |---|---|
-| Complete root API: encoding, crypto, password, dates, timing, streaming, text, fuzzy, highlight, charts, cache, result, QR, SVG, searchParams, fileIcons, gradients | `references/core.md` |
+| Complete root API: encoding, crypto, password, dates, i18n, timing, streaming, text, fuzzy, highlight, charts, cache, result, QR, SVG, searchParams, fileIcons, gradients | `references/core.md` |
 | Browser API: files, images, cookies, clipboard, notifications, kvStore, theme | `references/browser.md` |
 | SolidJS API: mutation, query, timed, hotkeys, dnd, detailPanel, localStore, clipboard, clickOutside, dropzone, a11y | `references/solid.md` |
 | Crypto/security usage decisions, ULID caveats, symmetric/asymmetric/TOTP guidance | `references/core-crypto-guide.md` |
@@ -73,10 +75,11 @@ usage, read the matching detailed reference first.
 | AES-256-GCM encryption, password/key based encryption | `crypto.symmetric` |
 | TOTP setup and verification | `crypto.totp` |
 | Random, memorable, or PIN passwords; strength checks | `password` |
-| Timezones, relative time, durations, calendar grids, date ranges | `dates` |
+| Timezones, relative time, durations, recurring-event formatting, calendar grids, date ranges | `dates` |
+| Type-safe message catalogs, locale fallback resolution, Accept-Language parsing, plural forms, list formatting, collation | `i18n` |
 | Sleep, jitter, shuffle, buffer, debounce, throttle | `timing` |
 | SSE or NDJSON stream parsing | `streaming` |
-| Slugs, casing, humanize, truncate, number/percent/millisecond-duration/byte formatting | `text` |
+| Slugs, casing, humanize, truncate, number/percent/currency/millisecond-duration/byte formatting | `text` |
 | Fuzzy match/filter/segments/closest typo correction | `fuzzy` |
 | Headless markdown/editor/custom syntax highlighting | `highlight` |
 | Scatter, line, bar, pie, donut, histogram, boxplot, sparkline, gauge, bar gauge, stat, heatmap, world map with deterministic viewports, state timeline SVGs | `charts` |

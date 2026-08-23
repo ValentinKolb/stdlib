@@ -142,10 +142,16 @@ dates.formatDate("2025-03-05T13:53:00Z");         // "05 Mar 2025"
 dates.formatDateTime("2025-03-05T13:53:00Z");      // "05 Mar 2025, 13:53"
 dates.formatDateTime("2025-03-05T23:30:00Z", { timeZone: "Europe/Berlin" });
 // "06 Mar 2025, 00:30"
-dates.formatDateTimeRelative(new Date());           // "just now"
+dates.formatDateTimeRelative(new Date());           // "now"
 dates.formatDateRelative(new Date());               // "14:30"
 dates.formatTimeSpan("2025-03-10T00:00:00Z");       // "in 3 days"
 dates.formatDuration("2025-03-01", "2025-03-03");   // "2 days"
+
+// Relative wording and duration units come from Intl and follow the context
+// locale (default "en"); pass `base` for deterministic output.
+dates.formatDateTimeRelative(t, { locale: "de" });  // "vor 30 Minuten"
+dates.formatTimeSpan(t, { base, locale: "de" });    // "vor 3 Stunden"
+dates.formatDuration(a, b, { locale: "de" });       // "2 Stunden, 30 Minuten"
 
 // Cloud edit flow: store UTC, render/edit in the app timezone
 const input = dates.instantToZonedInput(event.startsAt, app.timeZone);
@@ -156,6 +162,26 @@ const nextStartsAt = dates.addZonedInstant(event.startsAt, {
   timeZone: event.timeZone,
   weeks: 1,
 });
+
+// Recurrence rules as human-readable text
+dates.formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") });
+// "Every Tue and Wed until 23 Dec 2024"
+dates.formatRecurrence({ freq: "monthly", interval: 2, count: 6 });
+// "Every 2 months, 6 times"
+```
+
+`formatRecurrence` uses an English sentence skeleton; weekday names, unit
+names, and dates follow the context locale. For fully localized sentences,
+compose `formatRecurrenceParts` (all parts come from `Intl`) with your own
+message catalog:
+
+```ts
+dates.formatRecurrenceParts(
+  { freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") },
+  { locale: "de" },
+);
+// { every: "Woche", weekdays: "Di und Mi", until: "23 Dez. 2024" }
+// -> t.recurrence(parts) => `Jeden ${parts.weekdays} bis ${parts.until}`
 ```
 
 Timezone conversion uses the runtime's IANA data, including non-hour and
@@ -178,10 +204,10 @@ const berlinRange = dates.getDateRange("week", new Date(), { timeZone: "Europe/B
 dates.isToday(new Date());                  // true
 dates.isSameDay(a, b, { timeZone: "America/New_York" });
 dates.addMonths(new Date(), -1, { timeZone: "Europe/Berlin" });
-dates.formatMonthYear(new Date());           // "March 2025"
-dates.formatMonthYear(new Date(), "de");     // "März 2025"
+dates.formatMonthYear(new Date());                      // "March 2025"
+dates.formatMonthYear(new Date(), { locale: "de" });    // "März 2025"
 dates.formatDateKey(new Date(), { timeZone: "Asia/Tokyo" }); // "2025-03-05"
-dates.weekdays("fr");                        // ["lun.", "mar.", ...]
+dates.weekdays({ locale: "fr" });                       // ["lun.", "mar.", ...]
 
 // Filter items that fall on a date
 const items = dates.getDayItems(allItems, date, { timeZone: "Europe/Berlin" });
@@ -221,6 +247,65 @@ gradients.defaultGradient;           // Berry preset
 
 Apply with inline styles: `<span style={preset.style}>Username</span>`.
 
+## i18n
+
+Type-safe message catalogs with BCP-47 locale resolution, plus thin `Intl`
+wrappers. Dependency-free and SSR-safe: no global state, no cookies, no
+framework glue -- `resolve` returns a request-local translator.
+
+```ts
+import { i18n } from "@k2b/stdlib";
+
+const catalog = i18n.define({
+  baseLocale: "en",
+  messages: {
+    en: {
+      title: "Inbox",
+      greeting: ({ name }: { name: string }) => `Hello ${name}`,
+    },
+    de: {
+      title: "Eingang",
+      greeting: ({ name }) => `Hallo ${name}`, // params typed from the base locale
+    },
+  },
+});
+
+// Fallback: "de-AT" -> "de" -> baseLocale "en"
+const { locale, t } = catalog.resolve(["de-AT", "en"]);  // locale === "de"
+t.greeting({ name: "Ada" });                             // "Hallo Ada"
+t.title;                                                 // "Eingang"
+
+// Server request flow
+const requested = i18n.parseAcceptLanguage(req.headers.get("accept-language"));
+const { locale: l, t: tt } = catalog.resolve(requested);
+```
+
+The base locale defines the key set and parameter types; other locales are
+checked against it at compile time and may omit keys (falling back to the base
+locale at runtime). `catalog.check()` reports missing and extra keys per
+locale -- assert it returns `[]` in a unit test.
+
+The resolved `locale` plugs straight into `dates` and `text`:
+
+```ts
+dates.formatDate(date, { locale });
+text.pprintNumber(1_234_567, { locale });
+```
+
+Intl helpers for use inside (and outside) message functions:
+
+```ts
+i18n.plural(2, "de", { one: "Tag", other: "Tage" });  // "Tage" (Intl.PluralRules)
+i18n.formatList(["Di", "Mi", "Fr"], "de");            // "Di, Mi und Fr" (Intl.ListFormat)
+i18n.formatList(["a", "b"], "en", { type: "disjunction" }); // "a or b"
+["Öl", "Apfel"].sort(i18n.compare("de"));             // ["Apfel", "Öl"] (Intl.Collator)
+```
+
+The stdlib itself ships no translations: all locale-dependent output
+(weekday/month/unit names, relative time, numbers, lists, plural rules) comes
+from the runtime's `Intl` CLDR data, which is complete in modern browsers,
+Node, Bun, and edge runtimes. Only your own app messages live in catalogs.
+
 ## result
 
 Typed `Result<T, E>` for service-layer error handling with pagination support.
@@ -249,6 +334,20 @@ const result = await tryCatch(() => fetchUser(id));
 // Pagination
 const { page, perPage, offset } = paginate({ page: 2, perPage: 10 });
 okMany(items, { page, perPage, total: 100 });
+```
+
+`ServiceError.message` is for logs and debugging, not for UIs. Localize at the
+UI edge by mapping `error.code` through an `i18n` catalog:
+
+```ts
+const errors = i18n.define({
+  baseLocale: "en",
+  messages: {
+    en: { NOT_FOUND: "Not found", CONFLICT: "Already exists" },
+    de: { NOT_FOUND: "Nicht gefunden", CONFLICT: "Existiert bereits" },
+  },
+});
+if (!result.ok) toast(errors.resolve(requested).t[result.error.code]);
 ```
 
 ## qr
@@ -359,11 +458,14 @@ text.pprintNumber(1_234_567, { compact: true, locale: "en-US" });  // "1.2M"
 text.pprintPercent(0.1234, { decimals: 1, locale: "en-US" });      // "12.3%"
 text.pprintDurationMs(1_234, { locale: "en-US" });                 // "1.23s"
 text.pprintDurationMs(90_000);                                     // "1m 30s"
-text.pprintBytes(1536);                // "1.5 KiB" (IEC default, 1024-base; locale-aware decimal)
-text.pprintBytes(1500, "si");          // "1.5 KB"  (SI mode, 1000-base)
-text.pprintBytes(0);                   // "0 B"
-text.pprintBytesParts(1536);           // { value: "1.5", unit: "KiB" } — for styled UI rendering
-text.pprintBytesParts(1500, "si");     // { value: "1.5", unit: "KB"  }
+text.pprintBytes(1536);                        // "1.5 KiB" (IEC default, 1024-base)
+text.pprintBytes(1500, { mode: "si" });        // "1.5 KB"  (SI mode, 1000-base)
+text.pprintBytes(1536, { locale: "de" });      // "1,5 KiB"
+text.pprintBytes(0);                           // "0 B"
+text.pprintBytesParts(1536);                   // { value: "1.5", unit: "KiB" } — for styled UI rendering
+text.pprintBytesParts(1500, { mode: "si" });   // { value: "1.5", unit: "KB"  }
+text.pprintCurrency(1234.5, "EUR", { locale: "de" });     // "1.234,50 €"
+text.pprintCurrency(1234.5, "USD", { locale: "en-US" });  // "$1,234.50"
 
 // Truncation and summarization
 text.truncate("Hello World", 8);               // "Hello..."
@@ -377,10 +479,11 @@ text.kebabCase("HelloWorld");     // "hello-world"
 text.pascalCase("hello_world");   // "HelloWorld"
 ```
 
-`pprintNumber`, `pprintPercent`, and `pprintDurationMs` accept an optional
-`locale` and default to the runtime locale. Their suffixes remain deterministic
-across locales: compact numbers use `k/M/B/T`, percentages use `%`, and
-durations use `ms/s/m/h/d`. Only the numeric separators are localized.
+All `pprint*` helpers accept an optional `locale` and default to the runtime
+locale. Their suffixes remain deterministic across locales: compact numbers use
+`k/M/B/T`, percentages use `%`, durations use `ms/s/m/h/d`, and byte units use
+`B/KiB/MiB/...`. Only the numeric part is localized; `pprintCurrency` fully
+follows the locale's currency conventions.
 
 `pprintPercent` always accepts a ratio (`0.12` becomes `12%`); set `clamp: true`
 to constrain the ratio to `0..1`. Explicit `decimals` are fixed, which supports
