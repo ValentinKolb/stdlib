@@ -3,6 +3,7 @@ export * from "./crypto";
 export * from "./password";
 export * from "./dates";
 export * from "./fileicons";
+export * from "./i18n";
 export * from "./gradients";
 export * from "./result";
 // Note: qr is intentionally NOT re-exported here. It depends on the optional
