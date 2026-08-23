@@ -8,6 +8,7 @@ import {
   pprintDurationMs,
   pprintBytes,
   pprintBytesParts,
+  pprintCurrency,
   truncate,
   summarize,
   camelCase,
@@ -115,12 +116,12 @@ describe("pprintBytes", () => {
   });
 
   it("uses SI (1000-base) with KB/MB/GB/TB/PB labels in si mode", () => {
-    expect(pprintBytes(1000, "si")).toBe("1 KB");
-    expect(pprintBytes(1500, "si")).toBe("1.5 KB");
-    expect(pprintBytes(1_000_000, "si")).toBe("1 MB");
-    expect(pprintBytes(1_000_000_000, "si")).toBe("1 GB");
-    expect(pprintBytes(1e12, "si")).toBe("1 TB");
-    expect(pprintBytes(1e15, "si")).toBe("1 PB");
+    expect(pprintBytes(1000, { mode: "si" })).toBe("1 KB");
+    expect(pprintBytes(1500, { mode: "si" })).toBe("1.5 KB");
+    expect(pprintBytes(1_000_000, { mode: "si" })).toBe("1 MB");
+    expect(pprintBytes(1_000_000_000, { mode: "si" })).toBe("1 GB");
+    expect(pprintBytes(1e12, { mode: "si" })).toBe("1 TB");
+    expect(pprintBytes(1e15, { mode: "si" })).toBe("1 PB");
   });
 
   it("scales decimals by magnitude (2 / 1 / 0)", () => {
@@ -149,7 +150,7 @@ describe("pprintBytes", () => {
 describe("pprintBytesParts", () => {
   it("splits value and unit", () => {
     expect(pprintBytesParts(1536)).toEqual({ value: "1.5", unit: "KiB" });
-    expect(pprintBytesParts(1500, "si")).toEqual({ value: "1.5", unit: "KB" });
+    expect(pprintBytesParts(1500, { mode: "si" })).toEqual({ value: "1.5", unit: "KB" });
   });
 
   it("returns { '0', 'B' } for invalid input", () => {
@@ -160,6 +161,42 @@ describe("pprintBytesParts", () => {
 
   it("formats raw bytes without decimals", () => {
     expect(pprintBytesParts(512)).toEqual({ value: "512", unit: "B" });
+  });
+
+  it("localizes the numeric part via the locale option", () => {
+    expect(pprintBytesParts(1536, { locale: "de" })).toEqual({ value: "1,5", unit: "KiB" });
+    expect(pprintBytes(1536, { locale: "de" })).toBe("1,5 KiB");
+    expect(pprintBytes(1500, { mode: "si", locale: "en-US" })).toBe("1.5 KB");
+  });
+});
+
+// ==========================
+// pprintCurrency
+// ==========================
+
+describe("pprintCurrency", () => {
+  it("formats with locale and currency conventions", () => {
+    // Intl uses a non-breaking space between amount and symbol.
+    expect(pprintCurrency(1234.5, "EUR", { locale: "de" })).toBe("1.234,50 €");
+    expect(pprintCurrency(1234.5, "USD", { locale: "en-US" })).toBe("$1,234.50");
+  });
+
+  it("respects explicit decimals", () => {
+    expect(pprintCurrency(1234.5, "EUR", { locale: "en-US", decimals: 0 })).toBe("€1,235");
+  });
+
+  it("uses the currency's default fraction digits", () => {
+    expect(pprintCurrency(1234.5, "JPY", { locale: "en-US" })).toBe("¥1,235");
+  });
+
+  it("returns the fallback for invalid input", () => {
+    expect(pprintCurrency(null, "EUR")).toBe("—");
+    expect(pprintCurrency(Number.NaN, "EUR")).toBe("—");
+    expect(pprintCurrency(undefined, "EUR", { fallback: "n/a" })).toBe("n/a");
+  });
+
+  it("normalizes negative zero", () => {
+    expect(pprintCurrency(-0, "USD", { locale: "en-US" })).toBe("$0.00");
   });
 });
 

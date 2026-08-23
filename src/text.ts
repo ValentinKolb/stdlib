@@ -340,6 +340,13 @@ export type ByteMode = "iec" | "si";
 const IEC_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
 const SI_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
 
+export type PprintBytesOptions = {
+  /** `"iec"` (default, 1024-base) or `"si"` (1000-base). */
+  mode?: ByteMode;
+  /** Number-format locale. Defaults to the runtime locale. */
+  locale?: string;
+};
+
 /**
  * Split a byte count into a localized numeric string and its unit.
  *
@@ -349,29 +356,26 @@ const SI_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
  * Decimal places are picked for readability: 0 when the value >= 100,
  * 1 when >= 10, and 2 otherwise. Raw bytes (exponent 0) are integer-formatted.
  *
- * Locale follows the runtime default via `Intl.NumberFormat` -- so a German
- * UI gets `"1,5"` while an English UI gets `"1.5"`. Thousands grouping is
- * disabled to avoid `"1.023 B"`-style ambiguity in locales that use `.`
+ * Only the numeric part is localized (`"1,5"` for German, `"1.5"` for
+ * English); the byte units themselves are international. Thousands grouping
+ * is disabled to avoid `"1.023 B"`-style ambiguity in locales that use `.`
  * as the grouping separator.
  *
  * Guards against `Infinity`, `NaN`, and non-positive values by returning
  * `{ value: "0", unit: "B" }`.
  *
- * @param bytes - Number of bytes.
- * @param mode  - `"iec"` (default, 1024-base) or `"si"` (1000-base).
- *
- * @example text.pprintBytesParts(1536)         // { value: "1.5",  unit: "KiB" }
- * @example text.pprintBytesParts(1500, "si")   // { value: "1.5",  unit: "KB"  }
- * @example text.pprintBytesParts(0)            // { value: "0",    unit: "B"   }
+ * @example text.pprintBytesParts(1536)                    // { value: "1.5", unit: "KiB" }
+ * @example text.pprintBytesParts(1500, { mode: "si" })    // { value: "1.5", unit: "KB"  }
+ * @example text.pprintBytesParts(1536, { locale: "de" })  // { value: "1,5", unit: "KiB" }
  */
 export const pprintBytesParts = (
   bytes: number,
-  mode: ByteMode = "iec",
+  options: PprintBytesOptions = {},
 ): { value: string; unit: string } => {
   if (!Number.isFinite(bytes) || bytes <= 0) return { value: "0", unit: "B" };
 
-  const units = mode === "si" ? SI_UNITS : IEC_UNITS;
-  const base = mode === "si" ? 1000 : 1024;
+  const units = options.mode === "si" ? SI_UNITS : IEC_UNITS;
+  const base = options.mode === "si" ? 1000 : 1024;
 
   const exponent = Math.min(
     Math.floor(Math.log(bytes) / Math.log(base)),
@@ -382,7 +386,7 @@ export const pprintBytesParts = (
 
   const decimals = exponent === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2;
 
-  const formatted = new Intl.NumberFormat(undefined, {
+  const formatted = new Intl.NumberFormat(options.locale, {
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
     useGrouping: false,
@@ -394,21 +398,54 @@ export const pprintBytesParts = (
 /**
  * Pretty-print a byte count as a human-readable string.
  *
- * Defaults to IEC binary units (1 KiB = 1024 B). Pass `"si"` for decimal
- * units (1 KB = 1000 B). See {@link pprintBytesParts} for a variant that
- * returns value and unit separately for styled rendering.
+ * Defaults to IEC binary units (1 KiB = 1024 B). Pass `mode: "si"` for
+ * decimal units (1 KB = 1000 B). See {@link pprintBytesParts} for a variant
+ * that returns value and unit separately for styled rendering.
  *
- * @param bytes - Number of bytes.
- * @param mode  - `"iec"` (default) or `"si"`.
- *
- * @example text.pprintBytes(0)            // "0 B"
- * @example text.pprintBytes(1536)         // "1.5 KiB"
- * @example text.pprintBytes(1500, "si")   // "1.5 KB"
- * @example text.pprintBytes(NaN)          // "0 B"
+ * @example text.pprintBytes(0)                       // "0 B"
+ * @example text.pprintBytes(1536)                    // "1.5 KiB"
+ * @example text.pprintBytes(1500, { mode: "si" })    // "1.5 KB"
+ * @example text.pprintBytes(1536, { locale: "de" })  // "1,5 KiB"
  */
-export const pprintBytes = (bytes: number, mode: ByteMode = "iec"): string => {
-  const { value, unit } = pprintBytesParts(bytes, mode);
+export const pprintBytes = (bytes: number, options: PprintBytesOptions = {}): string => {
+  const { value, unit } = pprintBytesParts(bytes, options);
   return `${value} ${unit}`;
+};
+
+export type PprintCurrencyOptions = {
+  /** Fixed fraction digits. Defaults to the currency's standard digits. */
+  decimals?: number;
+  /** Number-format locale. Defaults to the runtime locale. */
+  locale?: string;
+  /** Returned for null, undefined, NaN, or Infinity. Default `"—"`. */
+  fallback?: string;
+};
+
+/**
+ * Format an amount as a localized currency string via `Intl.NumberFormat`.
+ *
+ * The currency is an ISO 4217 code (`"EUR"`, `"USD"`, ...). Symbol choice,
+ * placement, and fraction digits follow the locale and currency conventions.
+ *
+ * @example text.pprintCurrency(1234.5, "EUR", { locale: "de" })     // "1.234,50 €"
+ * @example text.pprintCurrency(1234.5, "USD", { locale: "en-US" })  // "$1,234.50"
+ * @example text.pprintCurrency(null, "EUR")                        // "—"
+ */
+export const pprintCurrency = (
+  value: number | null | undefined,
+  currency: string,
+  options: PprintCurrencyOptions = {},
+): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return options.fallback ?? DEFAULT_PPRINT_FALLBACK;
+  }
+  const decimals =
+    options.decimals === undefined ? undefined : normalizePprintDecimals(options.decimals, 0);
+  return new Intl.NumberFormat(options.locale, {
+    style: "currency",
+    currency,
+    ...exactFractionDigits(decimals),
+  }).format(Object.is(value, -0) ? 0 : value);
 };
 
 /**
@@ -559,6 +596,7 @@ export const text = {
   pprintDurationMs,
   pprintBytes,
   pprintBytesParts,
+  pprintCurrency,
   truncate,
   summarize,
   camelCase,
