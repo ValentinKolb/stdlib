@@ -2,6 +2,8 @@ import dayjs from "dayjs";
 import timezone from "dayjs/plugin/timezone";
 import utc from "dayjs/plugin/utc";
 
+import { formatList } from "./i18n";
+
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -57,23 +59,34 @@ export type CalendarUrlParams = {
   item?: string;
 };
 
-type LocaleOrContext = string | DateContext;
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
+
+export type RecurrenceRule = {
+  freq: RecurrenceFrequency;
+  /** Repeat every n-th day/week/month/year. Defaults to 1. */
+  interval?: number;
+  /** Weekdays for weekly rules (0 = Sunday .. 6 = Saturday, like `Date#getDay`). */
+  byWeekday?: number[];
+  /** Last date the rule applies. */
+  until?: string | Date;
+  /** Total number of occurrences. */
+  count?: number;
+};
+
+export type RecurrenceParts = {
+  /** Localized interval + frequency unit, e.g. `"day"`, `"2 weeks"`, `"2 Wochen"`. */
+  every: string;
+  /** Localized weekday list for weekly rules, e.g. `"Tue and Wed"`, `"Di und Mi"`. */
+  weekdays?: string;
+  /** Localized until date, formatted like {@link formatDate}. */
+  until?: string;
+  /** Occurrence count, passed through from the rule. */
+  count?: number;
+};
 
 // =============================================================================
 // Internals (helpers)
 // =============================================================================
-
-const pluralize = (value: number, unit: string): string => `${value} ${unit}${value === 1 ? "" : "s"} ago`;
-
-const formatDurationPart = (value: number, label: string): string => `${value} ${label}${value === 1 ? "" : "s"}`;
-
-const isContext = (value: unknown): value is DateContext =>
-  typeof value === "object" && value !== null && !(value instanceof Date);
-
-const normalizeContext = (input?: LocaleOrContext): DateContext => {
-  if (typeof input === "string") return { locale: input };
-  return input ?? {};
-};
 
 const asDate = (input: string | Date): Date => (typeof input === "string" ? new Date(input) : input);
 
@@ -86,6 +99,25 @@ const contextLocale = (context: DateContext | undefined, fallback = "en"): strin
 const contextTimeZone = (context: DateContext | undefined, fallback?: string): string | undefined => context?.timeZone ?? fallback;
 
 const firstDayOfWeek = (context: DateContext | undefined): 0 | 1 => context?.firstDayOfWeek ?? context?.weekStartsOn ?? 1;
+
+type TimeUnit = "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
+
+const relativeTime = (value: number, unit: TimeUnit, context?: DateContext): string =>
+  new Intl.RelativeTimeFormat(contextLocale(context), { numeric: "auto" }).format(value, unit);
+
+const unitFormatter = (unit: TimeUnit, context?: DateContext): Intl.NumberFormat =>
+  new Intl.NumberFormat(contextLocale(context), { style: "unit", unit, unitDisplay: "long" });
+
+const formatUnit = (value: number, unit: TimeUnit, context?: DateContext): string =>
+  unitFormatter(unit, context).format(value);
+
+/** The localized unit name alone (e.g. "day" / "Tag"), without the number. */
+const unitName = (unit: TimeUnit, context?: DateContext): string =>
+  unitFormatter(unit, context)
+    .formatToParts(1)
+    .filter((part) => part.type === "unit")
+    .map((part) => part.value)
+    .join("");
 
 const zoned = (input: string | Date, context?: DateContext, fallbackTimeZone?: string): dayjs.Dayjs => {
   const zone = contextTimeZone(context, fallbackTimeZone);
@@ -434,8 +466,10 @@ export const formatDateTime = (input: string | Date, context?: DateContext): str
 /**
  * Format a date/time as a human-friendly relative string.
  *
- * Time arithmetic uses absolute milliseconds. Day labels and fallback absolute
- * dates are rendered in the requested timezone, defaulting to UTC.
+ * Time arithmetic uses absolute milliseconds. Wording comes from
+ * `Intl.RelativeTimeFormat` in the context locale (default `"en"`). Day labels
+ * and fallback absolute dates are rendered in the requested timezone,
+ * defaulting to UTC.
  */
 export const formatDateTimeRelative = (input: string | Date, context?: RelativeDateContext): string => {
   const d = asDate(input);
@@ -443,11 +477,11 @@ export const formatDateTimeRelative = (input: string | Date, context?: RelativeD
   const diffMs = base.getTime() - d.getTime();
 
   if (diffMs < 0) return formatDate(d, context);
-  if (diffMs < 5_000) return "just now";
-  if (diffMs < 60_000) return pluralize(Math.max(1, Math.floor(diffMs / 1_000)), "sec");
-  if (diffMs < 60 * 60 * 1000) return pluralize(Math.max(1, Math.floor(diffMs / (60 * 1000))), "min");
-  if (diffMs < 24 * 60 * 60 * 1000) return pluralize(Math.max(1, Math.floor(diffMs / (60 * 60 * 1000))), "hour");
-  if (diffMs < 48 * 60 * 60 * 1000) return "Yesterday";
+  if (diffMs < 5_000) return relativeTime(0, "second", context);
+  if (diffMs < 60_000) return relativeTime(-Math.max(1, Math.floor(diffMs / 1_000)), "second", context);
+  if (diffMs < 60 * 60 * 1000) return relativeTime(-Math.max(1, Math.floor(diffMs / (60 * 1000))), "minute", context);
+  if (diffMs < 24 * 60 * 60 * 1000) return relativeTime(-Math.max(1, Math.floor(diffMs / (60 * 60 * 1000))), "hour", context);
+  if (diffMs < 48 * 60 * 60 * 1000) return relativeTime(-1, "day", context);
   if (diffMs < 7 * 24 * 60 * 60 * 1000) return weekdayName(d, context, "short", "UTC");
   return formatDate(d, context);
 };
@@ -471,7 +505,7 @@ export const formatDateRelative = (input: string | Date, context?: RelativeDateC
     const time = zoned(d, context, "UTC");
     return `${pad2(time.hour())}:${pad2(time.minute())}`;
   }
-  if (diffDays === 1) return "Yesterday";
+  if (diffDays === 1) return relativeTime(-1, "day", context);
   if (diffDays < 7) return weekdayName(d, context, "short", "UTC");
   return formatDate(d, context);
 };
@@ -479,35 +513,33 @@ export const formatDateRelative = (input: string | Date, context?: RelativeDateC
 /**
  * Format a timestamp relative to a base time using `Intl.RelativeTimeFormat`.
  *
- * Timezone does not affect elapsed time, but `locale` controls the wording.
+ * Timezone does not affect elapsed time, but `locale` controls the wording
+ * (default `"en"`). Pass `base` in the context for deterministic output.
  */
-export const formatTimeSpan = (
-  input: string | Date,
-  baseOrContext: string | Date | DateContext = new Date(),
-  context?: DateContext,
-): string => {
-  const ctx = isContext(baseOrContext) ? baseOrContext : context;
-  const base = isContext(baseOrContext) ? new Date() : baseOrContext;
+export const formatTimeSpan = (input: string | Date, context?: RelativeDateContext): string => {
   const target = asDate(input);
-  const origin = asDate(base);
+  const origin = context?.base ? asDate(context.base) : new Date();
   const diffMs = target.getTime() - origin.getTime();
   const absMs = Math.abs(diffMs);
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
   const week = 7 * day;
-  const rtf = new Intl.RelativeTimeFormat(ctx?.locale, { numeric: "auto" });
 
-  if (absMs < hour) return rtf.format(Math.round(diffMs / minute), "minute");
-  if (absMs < day) return rtf.format(Math.round(diffMs / hour), "hour");
-  if (absMs < week) return rtf.format(Math.round(diffMs / day), "day");
-  return rtf.format(Math.round(diffMs / week), "week");
+  if (absMs < hour) return relativeTime(Math.round(diffMs / minute), "minute", context);
+  if (absMs < day) return relativeTime(Math.round(diffMs / hour), "hour", context);
+  if (absMs < week) return relativeTime(Math.round(diffMs / day), "day", context);
+  return relativeTime(Math.round(diffMs / week), "week", context);
 };
 
 /**
- * Format an absolute duration between two timestamps as a human-readable string.
+ * Format an absolute duration between two timestamps as a human-readable
+ * string, e.g. `"2 hours, 30 minutes"` / `"2 Stunden, 30 Minuten"`.
+ *
+ * At most two units are shown. Durations under one minute render as
+ * `"< 1 minute"` in the context locale.
  */
-export const formatDuration = (from: string | Date, to: string | Date): string => {
+export const formatDuration = (from: string | Date, to: string | Date, context?: DateContext): string => {
   const start = asDate(from);
   const end = asDate(to);
   const diffMs = Math.abs(end.getTime() - start.getTime());
@@ -515,39 +547,89 @@ export const formatDuration = (from: string | Date, to: string | Date): string =
   const hour = 60 * minute;
   const day = 24 * hour;
 
-  if (diffMs < minute) return "less than a minute";
+  if (diffMs < minute) return `< ${formatUnit(1, "minute", context)}`;
 
   const days = Math.floor(diffMs / day);
   const hours = Math.floor((diffMs % day) / hour);
   const minutes = Math.floor((diffMs % hour) / minute);
 
-  if (days > 0) {
-    return [formatDurationPart(days, "day"), hours > 0 ? formatDurationPart(hours, "hour") : null].filter(Boolean).join(" ");
-  }
-  if (hours > 0) {
-    return [formatDurationPart(hours, "hour"), minutes > 0 ? formatDurationPart(minutes, "minute") : null].filter(Boolean).join(" ");
-  }
-  return formatDurationPart(minutes, "minute");
+  const parts =
+    days > 0
+      ? [formatUnit(days, "day", context), hours > 0 ? formatUnit(hours, "hour", context) : null]
+      : hours > 0
+        ? [formatUnit(hours, "hour", context), minutes > 0 ? formatUnit(minutes, "minute", context) : null]
+        : [formatUnit(minutes, "minute", context)];
+  return parts.filter(Boolean).join(", ");
 };
 
-export const formatMonthYear = (date: Date, localeOrContext?: LocaleOrContext): string => {
-  const context = normalizeContext(localeOrContext);
+export const formatMonthYear = (date: Date, context?: DateContext): string => {
   const z = zoned(date, context);
   return `${monthName(date, context, "long")} ${z.year()}`;
 };
 
 export const formatDayNumber = (date: Date, context?: DateContext): string => String(zoned(date, context).date());
 
-export const formatWeekdayShort = (date: Date, localeOrContext?: LocaleOrContext): string =>
-  weekdayName(date, normalizeContext(localeOrContext), "short").slice(0, 2);
+export const formatWeekdayShort = (date: Date, context?: DateContext): string =>
+  weekdayName(date, context, "short").slice(0, 2);
 
-export const formatWeekdayLong = (date: Date, localeOrContext?: LocaleOrContext): string =>
-  weekdayName(date, normalizeContext(localeOrContext), "long");
+export const formatWeekdayLong = (date: Date, context?: DateContext): string => weekdayName(date, context, "long");
 
-export const formatFullDate = (date: Date, localeOrContext?: LocaleOrContext): string => {
-  const context = normalizeContext(localeOrContext);
+export const formatFullDate = (date: Date, context?: DateContext): string => {
   const z = zoned(date, context);
   return `${z.date()}. ${monthName(date, context, "long")} ${z.year()}`;
+};
+
+/**
+ * Format a recurrence rule into localized building blocks.
+ *
+ * All parts come from `Intl` (unit names, weekday names, list separators,
+ * dates), so any locale works without shipped translations. Connective words
+ * like "every" or "until" are sentence structure and belong to the consumer's
+ * message catalog; {@link formatRecurrence} provides an English default.
+ *
+ * @example
+ * dates.formatRecurrenceParts(
+ *   { freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") },
+ *   { locale: "de" },
+ * )
+ * // { every: "Woche", weekdays: "Di und Mi", until: "23. Dez. 2024" }
+ */
+export const formatRecurrenceParts = (rule: RecurrenceRule, context?: DateContext): RecurrenceParts => {
+  const interval = Math.max(1, Math.trunc(rule.interval ?? 1));
+  const unit = ({ daily: "day", weekly: "week", monthly: "month", yearly: "year" } as const)[rule.freq];
+  const locale = contextLocale(context);
+
+  const weekdayLabels = rule.byWeekday?.map((weekday) =>
+    weekdayName(zonedLocalDate(2024, 0, 7 + weekday, context).toDate(), context, "short"),
+  );
+
+  return {
+    every: interval === 1 ? unitName(unit, context) : formatUnit(interval, unit, context),
+    ...(weekdayLabels?.length ? { weekdays: formatList(weekdayLabels, locale) } : {}),
+    ...(rule.until ? { until: formatDate(rule.until, context) } : {}),
+    ...(rule.count !== undefined ? { count: rule.count } : {}),
+  };
+};
+
+/**
+ * Format a recurrence rule as an English sentence, e.g.
+ * `"Every Tue and Wed until 23 Dec 2024"` or `"Every 2 weeks, 6 times"`.
+ *
+ * Only the sentence skeleton is English; weekday names, unit names, and dates
+ * follow the context locale. For fully localized sentences, build them from
+ * {@link formatRecurrenceParts} with your own message catalog.
+ */
+export const formatRecurrence = (rule: RecurrenceRule, context?: DateContext): string => {
+  const parts = formatRecurrenceParts(rule, context);
+  const interval = Math.max(1, Math.trunc(rule.interval ?? 1));
+
+  let result =
+    parts.weekdays && interval === 1
+      ? `Every ${parts.weekdays}`
+      : `Every ${parts.every}${parts.weekdays ? ` on ${parts.weekdays}` : ""}`;
+  if (parts.until) result += ` until ${parts.until}`;
+  if (parts.count !== undefined) result += `, ${parts.count} times`;
+  return result;
 };
 
 export const formatDateShort = (date: Date, context?: DateContext): string => {
@@ -688,16 +770,13 @@ export const getDayItems = <T extends CalendarItemLike>(items: T[], date: Date, 
 // Constants & Generators
 // =============================================================================
 
-export const weekdays = (localeOrContext?: LocaleOrContext): string[] => {
-  const context = normalizeContext(localeOrContext);
-  return Array.from({ length: 7 }, (_, i) => {
+export const weekdays = (context?: DateContext): string[] =>
+  Array.from({ length: 7 }, (_, i) => {
     const d = zonedLocalDate(2024, 0, i + 1, context).toDate();
     return weekdayName(d, context, "short");
   });
-};
 
-export const months = (localeOrContext?: LocaleOrContext): string[] => {
-  const context = normalizeContext(localeOrContext);
+export const months = (context?: DateContext): string[] => {
   return Array.from({ length: 12 }, (_, i) => {
     const d = zonedLocalDate(2024, i, 1, context).toDate();
     return monthName(d, context, "long");
@@ -770,6 +849,8 @@ export const dates = {
   formatDateShort,
   formatDateKey,
   formatTime,
+  formatRecurrence,
+  formatRecurrenceParts,
   // Comparison
   isToday,
   isSameMonth,

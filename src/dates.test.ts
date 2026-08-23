@@ -7,6 +7,8 @@ import {
   formatDateRelative,
   formatTimeSpan,
   formatDuration,
+  formatRecurrence,
+  formatRecurrenceParts,
 } from "./dates";
 import {
   dates as rootDates,
@@ -229,24 +231,29 @@ describe("formatDateTimeRelative", () => {
     jest.useRealTimers();
   });
 
-  it("returns 'just now' for < 5 seconds ago", () => {
-    expect(formatDateTimeRelative("2025-03-05T11:59:57Z")).toBe("just now");
+  it("returns 'now' for < 5 seconds ago", () => {
+    expect(formatDateTimeRelative("2025-03-05T11:59:57Z")).toBe("now");
   });
 
   it("returns seconds ago for 5-59 seconds", () => {
-    expect(formatDateTimeRelative("2025-03-05T11:59:30Z")).toBe("30 secs ago");
+    expect(formatDateTimeRelative("2025-03-05T11:59:30Z")).toBe("30 seconds ago");
   });
 
   it("returns minutes ago for 1-59 minutes", () => {
-    expect(formatDateTimeRelative("2025-03-05T11:30:00Z")).toBe("30 mins ago");
+    expect(formatDateTimeRelative("2025-03-05T11:30:00Z")).toBe("30 minutes ago");
   });
 
   it("returns hours ago for 1-23 hours", () => {
     expect(formatDateTimeRelative("2025-03-05T06:00:00Z")).toBe("6 hours ago");
   });
 
-  it("returns 'Yesterday' for 24-47 hours", () => {
-    expect(formatDateTimeRelative("2025-03-04T12:00:00Z")).toBe("Yesterday");
+  it("returns 'yesterday' for 24-47 hours", () => {
+    expect(formatDateTimeRelative("2025-03-04T12:00:00Z")).toBe("yesterday");
+  });
+
+  it("localizes wording via the context locale", () => {
+    expect(formatDateTimeRelative("2025-03-04T12:00:00Z", { locale: "de" })).toBe("gestern");
+    expect(formatDateTimeRelative("2025-03-05T11:30:00Z", { locale: "de" })).toBe("vor 30 Minuten");
   });
 
   it("returns weekday name for 2-6 days ago", () => {
@@ -259,8 +266,8 @@ describe("formatDateTimeRelative", () => {
     expect(formatDateTimeRelative("2025-02-20T12:00:00Z")).toBe("20 Feb 2025");
   });
 
-  it("pluralizes correctly: '6 secs ago'", () => {
-    expect(formatDateTimeRelative("2025-03-05T11:59:54Z")).toBe("6 secs ago");
+  it("pluralizes correctly: '6 seconds ago'", () => {
+    expect(formatDateTimeRelative("2025-03-05T11:59:54Z")).toBe("6 seconds ago");
   });
 
   it("pluralizes singular: '1 hour ago'", () => {
@@ -289,8 +296,9 @@ describe("formatDateRelative", () => {
     expect(result).toBe("14:30");
   });
 
-  it("returns 'Yesterday' for 1 day ago", () => {
-    expect(formatDateRelative("2025-03-04T10:00:00Z")).toBe("Yesterday");
+  it("returns 'yesterday' for 1 day ago", () => {
+    expect(formatDateRelative("2025-03-04T10:00:00Z")).toBe("yesterday");
+    expect(formatDateRelative("2025-03-04T10:00:00Z", { locale: "de" })).toBe("gestern");
   });
 
   it("returns formatted date for 7+ days ago", () => {
@@ -319,24 +327,28 @@ describe("formatTimeSpan", () => {
   const base = "2025-03-05T12:00:00Z";
 
   it("returns relative minutes for future", () => {
-    const result = formatTimeSpan("2025-03-05T12:30:00Z", base);
+    const result = formatTimeSpan("2025-03-05T12:30:00Z", { base });
     expect(result).toMatch(/30\s*minute/i);
   });
 
   it("returns relative hours", () => {
-    const result = formatTimeSpan("2025-03-05T15:00:00Z", base);
+    const result = formatTimeSpan("2025-03-05T15:00:00Z", { base });
     expect(result).toMatch(/3\s*hour/i);
   });
 
   it("returns relative days", () => {
-    const result = formatTimeSpan("2025-03-08T12:00:00Z", base);
+    const result = formatTimeSpan("2025-03-08T12:00:00Z", { base });
     expect(result).toMatch(/3\s*day/i);
   });
 
   it("handles past times", () => {
-    const result = formatTimeSpan("2025-03-05T11:30:00Z", base);
+    const result = formatTimeSpan("2025-03-05T11:30:00Z", { base });
     expect(result).toMatch(/30\s*minute/i);
     expect(result).toContain("ago");
+  });
+
+  it("localizes wording via the context locale", () => {
+    expect(formatTimeSpan("2025-03-05T11:30:00Z", { base, locale: "de" })).toBe("vor 30 Minuten");
   });
 });
 
@@ -347,9 +359,10 @@ describe("formatTimeSpan", () => {
 describe("formatDuration", () => {
   const base = new Date("2025-01-01T00:00:00Z");
 
-  it("returns 'less than a minute' for < 60 seconds", () => {
+  it("returns '< 1 minute' for < 60 seconds", () => {
     const end = new Date(base.getTime() + 30_000);
-    expect(formatDuration(base, end)).toBe("less than a minute");
+    expect(formatDuration(base, end)).toBe("< 1 minute");
+    expect(formatDuration(base, end, { locale: "de" })).toBe("< 1 Minute");
   });
 
   it("returns singular minute", () => {
@@ -364,12 +377,17 @@ describe("formatDuration", () => {
 
   it("returns hours and minutes", () => {
     const end = new Date(base.getTime() + 2 * 60 * 60_000 + 30 * 60_000);
-    expect(formatDuration(base, end)).toBe("2 hours 30 minutes");
+    expect(formatDuration(base, end)).toBe("2 hours, 30 minutes");
   });
 
   it("returns days and hours", () => {
     const end = new Date(base.getTime() + 24 * 60 * 60_000 + 3 * 60 * 60_000);
-    expect(formatDuration(base, end)).toBe("1 day 3 hours");
+    expect(formatDuration(base, end)).toBe("1 day, 3 hours");
+  });
+
+  it("localizes unit names via the context locale", () => {
+    const end = new Date(base.getTime() + 2 * 60 * 60_000 + 30 * 60_000);
+    expect(formatDuration(base, end, { locale: "de" })).toBe("2 Stunden, 30 Minuten");
   });
 
   it("omits zero sub-units", () => {
@@ -380,6 +398,60 @@ describe("formatDuration", () => {
   it("is direction-independent", () => {
     const end = new Date(base.getTime() + 60 * 60_000);
     expect(formatDuration(base, end)).toBe(formatDuration(end, base));
+  });
+});
+
+// =============================================================================
+// formatRecurrence / formatRecurrenceParts
+// =============================================================================
+
+describe("formatRecurrence", () => {
+  it("formats weekly rules with weekdays and until date", () => {
+    expect(formatRecurrence({ freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") })).toBe(
+      "Every Tue and Wed until 23 Dec 2024",
+    );
+  });
+
+  it("formats simple frequencies", () => {
+    expect(formatRecurrence({ freq: "daily" })).toBe("Every day");
+    expect(formatRecurrence({ freq: "monthly" })).toBe("Every month");
+  });
+
+  it("formats intervals and counts", () => {
+    expect(formatRecurrence({ freq: "monthly", interval: 2, count: 6 })).toBe("Every 2 months, 6 times");
+  });
+
+  it("combines intervals with weekdays", () => {
+    expect(formatRecurrence({ freq: "weekly", interval: 2, byWeekday: [1] })).toBe("Every 2 weeks on Mon");
+  });
+
+  it("localizes weekday and unit names via the context locale", () => {
+    expect(formatRecurrence({ freq: "weekly", interval: 2, byWeekday: [1] }, { locale: "de" })).toBe(
+      "Every 2 Wochen on Mo",
+    );
+  });
+});
+
+describe("formatRecurrenceParts", () => {
+  it("returns localized building blocks", () => {
+    const parts = formatRecurrenceParts(
+      { freq: "weekly", byWeekday: [2, 3], until: new Date("2024-12-23") },
+      { locale: "de" },
+    );
+    expect(parts.every).toBe("Woche");
+    expect(parts.weekdays).toBe("Di und Mi");
+    expect(parts.until).toBe("23 Dez. 2024");
+    expect(parts.count).toBeUndefined();
+  });
+
+  it("formats intervals as localized unit values", () => {
+    expect(formatRecurrenceParts({ freq: "weekly", interval: 2 }).every).toBe("2 weeks");
+    expect(formatRecurrenceParts({ freq: "daily" }).every).toBe("day");
+  });
+
+  it("passes count through and omits absent parts", () => {
+    const parts = formatRecurrenceParts({ freq: "yearly", count: 3 });
+    expect(parts).toEqual({ every: "year", count: 3 });
   });
 });
 
@@ -591,16 +663,16 @@ describe("formatting", () => {
 
 describe("locale support", () => {
   it("formatMonthYear supports locale", () => {
-    expect(formatMonthYear(localDate("2025-03-05"), "de")).toBe("März 2025");
+    expect(formatMonthYear(localDate("2025-03-05"), { locale: "de" })).toBe("März 2025");
   });
 
   it("formatWeekdayShort supports locale", () => {
     // Wednesday in German short is "Mi", sliced to 2 chars -> "Mi"
-    expect(formatWeekdayShort(localDate("2025-03-05"), "de")).toBe("Mi");
+    expect(formatWeekdayShort(localDate("2025-03-05"), { locale: "de" })).toBe("Mi");
   });
 
   it("formatFullDate supports locale", () => {
-    expect(formatFullDate(localDate("2025-03-05"), "de")).toBe("5. März 2025");
+    expect(formatFullDate(localDate("2025-03-05"), { locale: "de" })).toBe("5. März 2025");
   });
 });
 
@@ -620,7 +692,7 @@ describe("weekdays", () => {
   });
 
   it("supports locale parameter", () => {
-    const result = weekdays("de");
+    const result = weekdays({ locale: "de" });
     expect(result.length).toBe(7);
     expect(result[0]).toBe("Mo");
     expect(result[2]).toBe("Mi"); // Wednesday in German
@@ -637,7 +709,7 @@ describe("months", () => {
   });
 
   it("supports locale parameter", () => {
-    const result = months("de");
+    const result = months({ locale: "de" });
     expect(result.length).toBe(12);
     expect(result[0]).toBe("Januar");
     expect(result[2]).toBe("März");
