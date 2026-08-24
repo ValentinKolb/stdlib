@@ -64,10 +64,40 @@ describe("defineCatalog", () => {
     expect(catalog.resolve().locale).toBe("en");
   });
 
-  it("fills missing keys from the base locale", () => {
+  it("fills missing keys hierarchically: de-CH -> de -> base", () => {
     const { t } = catalog.resolve(["de-CH"]);
-    expect(t.title).toBe("Inbox");
-    expect(t.items({ count: 2 })).toBe("2 items");
+    expect(t.greeting({ name: "Ada" })).toBe("Grüezi Ada"); // own key wins
+    expect(t.title).toBe("Eingang"); // inherited from "de", not base
+    expect(t.items({ count: 2 })).toBe("2 items"); // falls through to base
+  });
+
+  it("merges deep tags through every defined ancestor", () => {
+    const deep = defineCatalog({
+      baseLocale: "en",
+      messages: {
+        en: { a: "a-en", b: "b-en", c: "c-en" },
+        zh: { a: "a-zh", b: "b-zh", c: "c-zh" },
+        "zh-Hant": { b: "b-hant" },
+        "zh-Hant-TW": { c: "c-tw" },
+      },
+    });
+    const { locale, t } = deep.resolve(["zh-Hant-TW"]);
+    expect(locale).toBe("zh-Hant-TW");
+    expect(t).toEqual({ a: "a-zh", b: "b-hant", c: "c-tw" });
+  });
+
+  it("merges ancestors case-insensitively", () => {
+    const mixed = defineCatalog({
+      baseLocale: "en",
+      messages: {
+        en: { a: "a-en", b: "b-en" },
+        DE: { a: "a-de", b: "b-de" },
+        "de-ch": { a: "a-ch" },
+      },
+    });
+    const { locale, t } = mixed.resolve(["de-CH"]);
+    expect(locale).toBe("de-ch");
+    expect(t).toEqual({ a: "a-ch", b: "b-de" });
   });
 });
 
@@ -96,6 +126,22 @@ describe("catalog.check", () => {
       },
     });
     expect(sloppy.check()).toEqual([{ locale: "de", missing: ["bye"], extra: ["helo"] }]);
+  });
+
+  it("treats ancestor-provided keys as covered", () => {
+    const regional = defineCatalog({
+      baseLocale: "en",
+      messages: {
+        en: { hello: "Hello", bye: "Bye" },
+        de: { hello: "Hallo" },
+        "de-CH": {},
+      },
+    });
+    // "hello" is covered for de-CH via "de"; "bye" falls through to base everywhere.
+    expect(regional.check()).toEqual([
+      { locale: "de", missing: ["bye"], extra: [] },
+      { locale: "de-CH", missing: ["bye"], extra: [] },
+    ]);
   });
 });
 

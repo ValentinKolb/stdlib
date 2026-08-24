@@ -281,9 +281,11 @@ const { locale: l, t: tt } = catalog.resolve(requested);
 ```
 
 The base locale defines the key set and parameter types; other locales are
-checked against it at compile time and may omit keys (falling back to the base
-locale at runtime). `catalog.check()` reports missing and extra keys per
-locale -- assert it returns `[]` in a unit test.
+checked against it at compile time and may omit keys. Missing keys fall back
+through the locale's defined BCP-47 ancestors to the base locale
+(`de-CH` -> `de` -> `en`, most specific wins). `catalog.check()` reports keys
+that fall all the way through to the base locale plus extra keys per locale --
+assert it returns `[]` in a unit test.
 
 The resolved `locale` plugs straight into `dates` and `text`:
 

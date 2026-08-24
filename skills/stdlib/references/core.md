@@ -595,7 +595,8 @@ i18n.define(config: { baseLocale: B; messages: { [locale: string]: MessageRecord
 
 catalog.resolve(requested?: readonly string[]): { locale: string; t: BaseMessages }
 // Fallback per requested tag: exact -> strip subtags ("de-AT" -> "de") -> next tag -> baseLocale.
-// Case-insensitive matching. t merges the resolved locale over the base (per-key fallback).
+// Case-insensitive matching. t merges base -> defined ancestors -> resolved locale
+// (per-key hierarchical fallback: "de-CH" inherits from "de", then base; most specific wins).
 catalog.check(): { locale: string; missing: string[]; extra: string[] }[]  // assert [] in a test
 catalog.locales: string[]   // base first
 catalog.baseLocale: string

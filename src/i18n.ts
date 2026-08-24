@@ -13,8 +13,10 @@ export type MessageRecord = Record<string, Message>;
 
 /**
  * Messages for a non-base locale: any subset of the base locale's keys, with
- * parameter types matching the base message. Missing keys fall back to the
- * base locale at runtime and are reported by {@link Catalog.check}.
+ * parameter types matching the base message. Missing keys fall back through
+ * the locale's defined BCP-47 ancestors (`de-CH` -> `de`) down to the base
+ * locale at runtime; keys that fall all the way through are reported by
+ * {@link Catalog.check}.
  */
 export type CompatibleMessages<Base extends MessageRecord> = {
   [K in keyof Base]?: Base[K];
@@ -53,10 +55,12 @@ export type Catalog<Base extends MessageRecord> = {
    */
   resolve: (requested?: readonly string[]) => { locale: string; t: Base };
   /**
-   * Compare every locale's keys against the base locale. Returns one entry
-   * per locale with missing or extra keys, or an empty array when all locales
-   * are complete. Intended for a unit test or dev-time assertion; parameter
-   * compatibility is already enforced at compile time.
+   * Compare every locale's keys against the base locale. `missing` lists keys
+   * that fall back to the base locale (keys provided by a defined ancestor
+   * such as `de` for `de-CH` count as covered); `extra` lists keys not in the
+   * base locale. Returns an empty array when all locales are complete.
+   * Intended for a unit test or dev-time assertion; parameter compatibility
+   * is already enforced at compile time.
    */
   check: () => CatalogIssue[];
 };
@@ -66,7 +70,9 @@ export type Catalog<Base extends MessageRecord> = {
  *
  * The base locale defines the full key set and the parameter types of every
  * message function; all other locales are checked against it at compile time
- * and may omit keys (falling back to the base locale at runtime).
+ * and may omit keys. Missing keys fall back through the locale's defined
+ * BCP-47 ancestors to the base locale (`de-CH` -> `de` -> base), most
+ * specific wins.
  *
  * The catalog holds no global state: `resolve` returns a request-local
  * translator, so the same catalog is safe to share across concurrent
@@ -92,11 +98,29 @@ export const defineCatalog = <BaseLocale extends string, M extends Record<BaseLo
   const base = messages[baseLocale] as M[BaseLocale];
   const locales = [baseLocale, ...Object.keys(messages).filter((locale) => locale !== baseLocale)];
 
-  // Merged translators are precomputed once so resolve() is a cheap lookup.
   // Lookup keys are lowercased because BCP-47 tags are case-insensitive.
+  const byLowerTag = new Map<string, string>();
+  for (const locale of locales) byLowerTag.set(locale.toLowerCase(), locale);
+
+  // Defined ancestors of a tag, least specific first, excluding the base
+  // locale: "zh-Hant-TW" -> ["zh", "zh-Hant", "zh-Hant-TW"] (where defined).
+  const ancestorChain = (locale: string): string[] => {
+    const subtags = locale.toLowerCase().split("-");
+    const chain: string[] = [];
+    for (let length = 1; length <= subtags.length; length++) {
+      const match = byLowerTag.get(subtags.slice(0, length).join("-"));
+      if (match !== undefined && match !== baseLocale) chain.push(match);
+    }
+    return chain;
+  };
+
+  // Merged translators are precomputed once so resolve() is a cheap lookup.
+  // Messages fall back per key through the defined ancestors down to the base
+  // locale; the most specific locale wins.
   const translators = new Map<string, { locale: string; t: M[BaseLocale] }>();
   for (const locale of locales) {
-    translators.set(locale.toLowerCase(), { locale, t: { ...base, ...messages[locale] } });
+    const t = Object.assign({}, base, ...ancestorChain(locale).map((ancestor) => messages[ancestor]));
+    translators.set(locale.toLowerCase(), { locale, t });
   }
 
   const resolve = (requested?: readonly string[]): { locale: string; t: M[BaseLocale] } => {
@@ -117,9 +141,11 @@ export const defineCatalog = <BaseLocale extends string, M extends Record<BaseLo
     const issues: CatalogIssue[] = [];
     for (const locale of locales) {
       if (locale === baseLocale) continue;
-      const keys = new Set(Object.keys(messages[locale]!));
-      const missing = baseKeys.filter((key) => !keys.has(key));
-      const extra = [...keys].filter((key) => !(key in base));
+      // Keys provided by defined ancestors count as covered: "de-CH" without
+      // its own "title" is not a translation gap when "de" supplies it.
+      const covered = new Set(ancestorChain(locale).flatMap((ancestor) => Object.keys(messages[ancestor]!)));
+      const missing = baseKeys.filter((key) => !covered.has(key));
+      const extra = Object.keys(messages[locale]!).filter((key) => !(key in base));
       if (missing.length > 0 || extra.length > 0) issues.push({ locale, missing, extra });
     }
     return issues;
